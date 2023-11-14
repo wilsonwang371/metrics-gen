@@ -29,7 +29,11 @@ that captures the metrics for your code.
 	Run:    RunGenerate,
 }
 
-func hasSuffix(filename string) bool {
+func needIgnore(filename string) bool {
+	if inplace {
+		// if inplace, we need not ignore any file
+		return false
+	}
 	regex := regexp.MustCompile(fmt.Sprintf(`.*_%s\.go`, suffix))
 	match := regex.MatchString(filename)
 	if match {
@@ -43,13 +47,13 @@ func addAllDirs() {
 		log.Fatal("info is nil")
 	}
 	for _, dir := range searchDirs {
-		err := info.AddTraceDir(dir, false, hasSuffix)
+		err := info.AddTraceDir(dir, false, needIgnore)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 	for _, dir := range recursiveSearchDirs {
-		err := info.AddTraceDir(dir, true, hasSuffix)
+		err := info.AddTraceDir(dir, true, needIgnore)
 		if err != nil {
 			log.Fatal(err)
 		}
