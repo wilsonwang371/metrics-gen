@@ -178,7 +178,7 @@ func PatchProject(d *parse.CollectInfo) error {
 	return nil
 }
 
-func StoreFiles(d *parse.CollectInfo) error {
+func StoreFiles(d *parse.CollectInfo, dryRun bool) error {
 	allFiles := d.Files()
 	for _, filename := range allFiles {
 		if !d.IsModified(filename) {
@@ -188,6 +188,11 @@ func StoreFiles(d *parse.CollectInfo) error {
 		fDst := d.FileDst(filename)
 		newFilename := d.PatchedFilename(filename)
 
+		log.Infof("writing to %s", newFilename)
+		if dryRun {
+			continue
+		}
+
 		// create file
 		f, err := os.Create(newFilename)
 		if err != nil {
@@ -195,7 +200,6 @@ func StoreFiles(d *parse.CollectInfo) error {
 		}
 		defer f.Close()
 
-		log.Infof("writing to %s", newFilename)
 		if err := decorator.Fprint(f, fDst); err != nil {
 			return err
 		}

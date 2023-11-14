@@ -19,6 +19,7 @@ var (
 	searchDirs          []string
 	recursiveSearchDirs []string
 	info                *parse.CollectInfo
+	dryRun              bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -55,7 +56,7 @@ var rootCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		if err := gometrics.StoreFiles(info); err != nil {
+		if err := gometrics.StoreFiles(info, dryRun); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -111,4 +112,6 @@ func init() {
 			"generated files will be named <filename>_tracegen.go")) // suffix option
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v",
 		false, "verbose output") // verbose flag
+	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n",
+		false, "dry run") // dry run flag
 }
