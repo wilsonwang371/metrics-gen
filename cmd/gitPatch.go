@@ -4,21 +4,16 @@ Copyright © 2023 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
 // gitPatchCmd represents the gitPatch command
 var gitPatchCmd = &cobra.Command{
-	Use:   "git-patch",
-	Short: "Patch code as git patch",
-	Long:  `This command will generate a git patch that contains the patched code`,
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// run root pre-run
-		rootCmd.PreRun(cmd, args)
-	},
-	Run: RunGitPatch,
+	Use:    "git-patch",
+	Short:  "Patch code as git patch",
+	Long:   `This command will generate a git patch that contains the patched code`,
+	PreRun: PreRunGitPatch,
+	Run:    RunGitPatch,
 }
 
 func init() {
@@ -35,6 +30,11 @@ func init() {
 	// gitPatchCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
+func PreRunGitPatch(cmd *cobra.Command, args []string) {
+	// run root pre-run
+	rootCmd.PreRun(cmd, args)
+}
+
 func RunGitPatch(cmd *cobra.Command, args []string) {
-	fmt.Println("git-patch called")
+	panic("not implemented")
 }

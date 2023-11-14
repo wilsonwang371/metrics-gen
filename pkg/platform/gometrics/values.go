@@ -1,6 +1,7 @@
 package gometrics
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"os"
@@ -179,7 +180,10 @@ func PatchProject(d *parse.CollectInfo) error {
 	return nil
 }
 
-func StoreFiles(d *parse.CollectInfo, suffix string, dryRun bool) error {
+func StoreFiles(d *parse.CollectInfo, inplace bool, suffix string, dryRun bool) error {
+	if inplace && suffix != "" {
+		return fmt.Errorf("cannot specify both inplace and suffix")
+	}
 	allFiles := d.Files()
 	for _, filename := range allFiles {
 		if !d.IsModified(filename) {
@@ -187,21 +191,33 @@ func StoreFiles(d *parse.CollectInfo, suffix string, dryRun bool) error {
 		}
 
 		fDst := d.FileDst(filename)
-		newFilename := utils.NewFilenameForTracing(filename, suffix)
+
+		var newFilename string
+		if inplace {
+			newFilename = utils.NewFilenameForTracing(filename, suffix)
+		} else {
+			newFilename = filename
+		}
+
+		// put new content into a buffer
+		var buf bytes.Buffer
+		if err := decorator.Fprint(&buf, fDst); err != nil {
+			return err
+		}
 
 		log.Infof("writing to %s", newFilename)
 		if dryRun {
 			continue
 		}
 
-		// create file
+		// write to file
 		f, err := os.Create(newFilename)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
 
-		if err := decorator.Fprint(f, fDst); err != nil {
+		if _, err := f.Write(buf.Bytes()); err != nil {
 			return err
 		}
 	}

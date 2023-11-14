@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	suffix string
+	suffix  string
+	inplace bool
 )
 
 // generateCmd represents the generate command
@@ -24,17 +25,8 @@ var generateCmd = &cobra.Command{
 	Long: `This command will generate new files with the patched code
 that captures the metrics for your code.
 	`,
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// run root pre-run
-		rootCmd.PreRun(cmd, args)
-
-		// fail if suffix is not specified
-		if suffix == "" {
-			log.Fatal("suffix must be specified")
-		}
-
-	},
-	Run: RunGenerate,
+	PreRun: PreRunGenerate,
+	Run:    RunGenerate,
 }
 
 func hasSuffix(filename string) bool {
@@ -83,8 +75,26 @@ func init() {
 	// generateCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	generateCmd.Flags().StringVarP(&suffix, "suffix", "s",
-		"tracegen", ("suffix to add to generated files. If suffix is tracegen, then " +
+		"", ("suffix to add to generated files. If suffix is tracegen, then " +
 			"generated files will be named <filename>_tracegen.go")) // suffix option
+	generateCmd.Flags().BoolVarP(&inplace, "inplace", "i",
+		false, "patch files in place") // inplace flag
+}
+
+func PreRunGenerate(cmd *cobra.Command, args []string) {
+	// run root pre-run
+	rootCmd.PreRun(cmd, args)
+
+	// fail if suffix is not specified
+	if suffix == "" && !inplace {
+		log.Fatal("suffix must be specified")
+	}
+
+	// sufix and inplace are mutually exclusive
+	if suffix != "" && inplace {
+		log.Fatal("suffix and inplace are mutually exclusive")
+	}
+
 }
 
 func RunGenerate(cmd *cobra.Command, args []string) {
@@ -97,7 +107,7 @@ func RunGenerate(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 
-	if err := gometrics.StoreFiles(info, suffix, dryRun); err != nil {
+	if err := gometrics.StoreFiles(info, inplace, suffix, dryRun); err != nil {
 		log.Fatal(err)
 	}
 }
