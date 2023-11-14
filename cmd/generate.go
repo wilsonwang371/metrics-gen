@@ -94,7 +94,6 @@ func PreRunGenerate(cmd *cobra.Command, args []string) {
 	if suffix != "" && inplace {
 		log.Fatal("suffix and inplace are mutually exclusive")
 	}
-
 }
 
 func RunGenerate(cmd *cobra.Command, args []string) {

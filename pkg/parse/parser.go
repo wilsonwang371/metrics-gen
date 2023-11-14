@@ -71,7 +71,8 @@ func (t *CollectInfo) AddTraceFiles(filenames []string) error {
 
 // AddTraceDir adds all .go files in a directory to the CollectInfo struct
 func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
-	needIgnore func(filename string) bool) error {
+	needIgnore func(filename string) bool,
+) error {
 	// search all .go files
 	files := []string{}
 	if recursive {

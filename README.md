@@ -25,4 +25,20 @@ make build
 
 ```bash
 metrics-gen -h
+This command will generate new files with the patched code
+that captures the metrics for your code.
+
+Usage:
+  metrics-gen generate [flags]
+
+Flags:
+  -h, --help            help for generate
+  -i, --inplace         patch files in place
+  -s, --suffix string   suffix to add to generated files. If suffix is tracegen, then generated files will be named <filename>_tracegen.go
+
+Global Flags:
+  -d, --dir strings    directory to search for files
+  -n, --dry-run        dry run
+  -r, --rdir strings   recursive directory to search for files
+  -v, --verbose        verbose output
 ```
