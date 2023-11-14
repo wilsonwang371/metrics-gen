@@ -119,7 +119,9 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 
 	// check if the file already has the import
 	for _, imp := range f.Imports {
-		if imp.Path.Value == pkgUrl {
+		// check if the import is already there
+		if imp.Path.Value == fmt.Sprintf(`"%s"`, pkgUrl) {
+			log.Infof("package %s already imported", pkgUrl)
 			return true
 		}
 	}
