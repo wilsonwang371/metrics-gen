@@ -107,7 +107,7 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 		if needIgnore != nil && needIgnore(filename) {
 			continue
 		}
-		log.Infof("add traced file %s", filename)
+		log.Debugf("add traced file %s", filename)
 		filteredFiles = append(filteredFiles, filename)
 
 		continue
