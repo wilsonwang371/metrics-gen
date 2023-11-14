@@ -106,11 +106,15 @@ func RunGenerate(cmd *cobra.Command, args []string) {
 
 	info = parse.NewCollectInfo()
 	addAllDirs()
-	if err := gometrics.PatchProject(info); err != nil {
+	if err := gometrics.PatchProject(info, dryRun); err != nil {
 		log.Fatal(err)
 	}
 
 	if err := gometrics.StoreFiles(info, inplace, suffix, dryRun); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := gometrics.PostPatch(info, dryRun); err != nil {
 		log.Fatal(err)
 	}
 }

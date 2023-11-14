@@ -20,6 +20,8 @@ type CollectInfo struct {
 	fileDirectives map[string][]*Directive // map of file name to slice of directives
 	modifiedFiles  map[string]bool         // map of file name to bool
 	defFileName    string                  // file that contains the definition of the metric global variable
+
+	goModPath string
 }
 
 // NewCollectInfo creates a new CollectInfo struct
@@ -48,7 +50,7 @@ func (t *CollectInfo) AddTraceFile(filename string) error {
 	t.fileDirectives[filename] = allDirectives
 
 	for _, directive := range allDirectives {
-		if directive.traceType == DEFINE {
+		if directive.traceType == Define {
 			if t.defFileName != "" {
 				return fmt.Errorf("multiple define files")
 			}
@@ -78,7 +80,14 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 	if recursive {
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if filepath.Ext(path) == ".go" {
+				// add go files to list
 				files = append(files, path)
+			} else if filepath.Ext(path) == ".mod" {
+				// save go.mod location
+				if t.goModPath != "" {
+					return fmt.Errorf("multiple go.mod files")
+				}
+				t.goModPath = path
 			}
 			return nil
 		})
@@ -205,11 +214,17 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 	}
 	for idx, decor := range d.declaration.Decorations().Start.All() {
 		if d.text == decor {
-			prevComment := d.declaration.Decorations().Start.All()[:idx+1]
-			nextComment := d.declaration.Decorations().Start.All()[idx+1:]
+			var prevComment, nextComment []string
 
-			d.declaration.Decorations().Start.Replace(nextComment...)
+			// copy decorations to prevComment and nextComment
+			prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
+			nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
+
+			prevComment = append(prevComment, "// +trace:begin-generated")
+			nextComment = append([]string{"// +trace:end-generated"}, nextComment...)
+
 			addedDecl.Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
+			d.declaration.Decorations().Start.Replace(nextComment...)
 
 			// insert code before the declaration index
 			log.Infof("add global define function for: %s", d.filename)
@@ -241,6 +256,10 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt,
 		return fmt.Errorf("declaration not found")
 	}
 	log.Infof("add function time tracing for: %s", d.declaration.(*dst.FuncDecl).Name.Name)
+
+	addedStmts[0].Decorations().Start.Prepend("\n", "// +trace:begin-generated")
+	addedStmts[len(addedStmts)-1].Decorations().End.Append("\n", "// +trace:end-generated")
+
 	d.declaration.(*dst.FuncDecl).Body.List = append(addedStmts, d.declaration.(*dst.FuncDecl).Body.List...)
 
 	// add import
@@ -298,4 +317,11 @@ func (t *CollectInfo) FileDst(filename string) *dst.File {
 
 func (t *CollectInfo) IsModified(filename string) bool {
 	return t.modifiedFiles[filename]
+}
+
+func (t *CollectInfo) GoModPath() string {
+	if t.goModPath == "" {
+		log.Infof("go.mod not found")
+	}
+	return t.goModPath
 }

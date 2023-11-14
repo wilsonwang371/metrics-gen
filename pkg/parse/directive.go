@@ -10,11 +10,13 @@ import (
 type TraceType int
 
 const (
-	DEFINE TraceType = iota
-	ON
-	OFF
-	EMPTY
-	INVALID
+	Define TraceType = iota
+	On
+	Off
+	Empty
+	GenBegine
+	GenEnd
+	Invalid
 )
 
 type Directive struct {
@@ -33,22 +35,26 @@ func (d *Directive) Declaration() dst.Decl {
 }
 
 func ParseStringDirectiveType(comment string) (TraceType, error) {
-	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_0-9]*) ?.*`)
+	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_\-0-9]*) ?.*`)
 	sub := r.FindStringSubmatch(comment)
 	if len(sub) == 2 {
 		switch sub[1] {
 		case "define":
-			return DEFINE, nil
+			return Define, nil
 		case "on":
-			return ON, nil
+			return On, nil
 		case "off":
-			return OFF, nil
+			return Off, nil
 		case "":
-			return EMPTY, nil
+			return Empty, nil
+		case "begin-generated":
+			return GenBegine, nil
+		case "end-generated":
+			return GenEnd, nil
 		default:
 			panic("No match")
 		}
 	} else {
-		return INVALID, fmt.Errorf("No match")
+		return Invalid, fmt.Errorf("No match")
 	}
 }

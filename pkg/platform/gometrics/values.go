@@ -150,7 +150,7 @@ func DefineFuncInitDecl() *dst.FuncDecl {
 	return res
 }
 
-func PatchProject(d *parse.CollectInfo) error {
+func PatchProject(d *parse.CollectInfo, _ bool) error {
 	if !d.HasDefinitionDirective() {
 		return fmt.Errorf("no definition directive found")
 	}
@@ -160,20 +160,22 @@ func PatchProject(d *parse.CollectInfo) error {
 			return err
 		}
 		for _, directive := range directives {
-			if directive.TraceType() == parse.DEFINE {
+			if directive.TraceType() == parse.Define {
 				// add the init function
 				initDecl := DefineFuncInitDecl()
 				pkgs := DefineFuncInitPkgs()
 				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
 					return err
 				}
-			} else if directive.TraceType() == parse.ON {
+			} else if directive.TraceType() == parse.On {
 				// add the defer statement
 				stmts := TraceFuncTimeStmts(directive.Declaration().(*dst.FuncDecl).Name.Name)
 				pkgs := TraceFuncTimesPkgs()
 				if err := d.SetFunctionTimeTracing(*directive, stmts, pkgs); err != nil {
 					return err
 				}
+			} else if directive.TraceType() == parse.GenBegine || directive.TraceType() == parse.GenEnd {
+				return fmt.Errorf("metrics code already generated")
 			}
 		}
 	}
@@ -221,5 +223,13 @@ func StoreFiles(d *parse.CollectInfo, inplace bool, suffix string, dryRun bool) 
 			return err
 		}
 	}
+
 	return nil
+}
+
+func PostPatch(d *parse.CollectInfo, dryRun bool) error {
+	if dryRun {
+		return nil
+	}
+	return utils.FetchPackages(d.GoModPath(), []string{"github.com/hashicorp/go-metrics"})
 }

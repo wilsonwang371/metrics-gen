@@ -2,6 +2,9 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -34,4 +37,50 @@ func DeduplicateStrings(input []string) []string {
 	}
 
 	return deduplicated
+}
+
+// GoGetPackage runs `go get` on the given import path
+func GoGetPackage(importPath string) error {
+	cmd := exec.Command("go", "get", importPath) // ignore_security_alert RCE
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// GetPackages updates the packages in go.mod
+func FetchPackages(goModPath string, pkgs []string) error {
+	// get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	// make sure go.mod exists
+	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+		return fmt.Errorf("go.mod does not exist")
+	}
+
+	// get direcotry of go.mod
+	absPath, err := filepath.Abs(goModPath)
+	if err != nil {
+		return err
+	}
+	projPath := filepath.Dir(absPath)
+
+	// change the working directory to the project path
+	if err := os.Chdir(projPath); err != nil {
+		return err
+	}
+
+	for _, pkg := range pkgs {
+		if err := GoGetPackage(pkg); err != nil {
+			return err
+		}
+	}
+
+	// change the working directory back to the original
+	if err := os.Chdir(cwd); err != nil {
+		return err
+	}
+	return nil
 }

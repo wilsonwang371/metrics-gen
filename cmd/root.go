@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
 	"github.com/spf13/cobra"
@@ -27,20 +28,8 @@ var rootCmd = &cobra.Command{
 	Short: "Generate metrics capturing code for your Go project",
 	Long: `This tool will parse your directive comments and generate new files
 	that contain the code to capture the metrics for your code.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
-		// either dir or rdir must be specified
-		if len(searchDirs) == 0 && len(recursiveSearchDirs) == 0 {
-			log.Fatal("either dir or rdir must be specified")
-		}
-
-		// set log level
-		if verbose {
-			log.SetLevel(log.DebugLevel)
-		} else {
-			log.SetLevel(log.InfoLevel)
-		}
-	},
-	Run: RunRoot,
+	PreRun: PreRunRoot,
+	Run:    RunRoot,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -77,4 +66,25 @@ func init() {
 func RunRoot(cmd *cobra.Command, args []string) {
 	// just print help and exit
 	cmd.Help()
+}
+
+func PreRunRoot(cmd *cobra.Command, args []string) {
+	// either dir or rdir must be specified
+	if len(searchDirs) == 0 && len(recursiveSearchDirs) == 0 {
+		log.Fatal("either dir or rdir must be specified")
+	}
+
+	// set log level
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+
+	// make sure we have go installed
+	goVer := exec.Command("go", "version")
+	err := goVer.Run()
+	if err != nil {
+		log.Fatal("go not found")
+	}
 }
