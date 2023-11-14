@@ -194,9 +194,9 @@ func StoreFiles(d *parse.CollectInfo, inplace bool, suffix string, dryRun bool) 
 
 		var newFilename string
 		if inplace {
-			newFilename = utils.NewFilenameForTracing(filename, suffix)
-		} else {
 			newFilename = filename
+		} else {
+			newFilename = utils.NewFilenameForTracing(filename, suffix)
 		}
 
 		// put new content into a buffer
