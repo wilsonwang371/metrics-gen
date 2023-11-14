@@ -131,7 +131,6 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 	for _, imp := range f.Imports {
 		// check if the import is already there
 		if imp.Path.Value == fmt.Sprintf(`"%s"`, pkgUrl) {
-			log.Infof("package %s already imported", pkgUrl)
 			return true
 		}
 	}
@@ -157,7 +156,7 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 // if the name and pkgUrl are the same, then the name is omitted
 func (t *CollectInfo) AddPkgImport(filename string, name string, pkgUrl string) error {
 	if t.hasPkgImport(filename, pkgUrl) {
-		return fmt.Errorf("package already imported")
+		return fmt.Errorf(fmt.Sprintf("package \"%s\" already imported", pkgUrl))
 	}
 	f, ok := t.filesDst[filename]
 	if !ok {
@@ -193,7 +192,7 @@ func (t *CollectInfo) AddPkgImport(filename string, name string, pkgUrl string) 
 	if name != pkgUrl {
 		importDecl.Specs[0].(*dst.ImportSpec).Name = &dst.Ident{Name: name}
 	}
-	log.Infof("add import %s %s", name, pkgUrl)
+	log.Debugf("import package \"%s\" as \"%s\"", pkgUrl, name)
 	f.Decls = append([]dst.Decl{
 		importDecl,
 	}, f.Decls...)
@@ -227,7 +226,7 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 			d.declaration.Decorations().Start.Replace(nextComment...)
 
 			// insert code before the declaration index
-			log.Infof("add global define function for: %s", d.filename)
+			log.Debugf("add global define function for: %s", d.filename)
 			file.Decls = append(file.Decls[:directiveIdx], append([]dst.Decl{addedDecl}, file.Decls[directiveIdx:]...)...)
 
 			// add import
@@ -265,7 +264,7 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt,
 	// add import
 	for name, pkgUrl := range pkgs {
 		if err := t.AddPkgImport(d.filename, name, pkgUrl); err != nil {
-			log.Info(err) // ignore error
+			log.Debug(err) // ignore error
 		}
 	}
 

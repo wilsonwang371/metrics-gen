@@ -101,7 +101,7 @@ func PreRunGenerate(cmd *cobra.Command, args []string) {
 }
 
 func RunGenerate(cmd *cobra.Command, args []string) {
-	log.Infof("dirs: %v. rdirs: %v", searchDirs,
+	log.Debugf("dirs: %v. rdirs: %v", searchDirs,
 		recursiveSearchDirs)
 
 	info = parse.NewCollectInfo()
