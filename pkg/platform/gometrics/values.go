@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
+	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 )
@@ -178,7 +179,7 @@ func PatchProject(d *parse.CollectInfo) error {
 	return nil
 }
 
-func StoreFiles(d *parse.CollectInfo, dryRun bool) error {
+func StoreFiles(d *parse.CollectInfo, suffix string, dryRun bool) error {
 	allFiles := d.Files()
 	for _, filename := range allFiles {
 		if !d.IsModified(filename) {
@@ -186,7 +187,7 @@ func StoreFiles(d *parse.CollectInfo, dryRun bool) error {
 		}
 
 		fDst := d.FileDst(filename)
-		newFilename := d.PatchedFilename(filename)
+		newFilename := utils.NewFilenameForTracing(filename, suffix)
 
 		log.Infof("writing to %s", newFilename)
 		if dryRun {

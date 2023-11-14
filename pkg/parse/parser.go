@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
@@ -21,18 +20,16 @@ type CollectInfo struct {
 	fileDirectives map[string][]*Directive // map of file name to slice of directives
 	modifiedFiles  map[string]bool         // map of file name to bool
 	defFileName    string                  // file that contains the definition of the metric global variable
-	suffix         string                  // suffix for generated files
 }
 
 // NewCollectInfo creates a new CollectInfo struct
-func NewCollectInfo(suffix string) *CollectInfo {
+func NewCollectInfo() *CollectInfo {
 	return &CollectInfo{
 		fileSet:        token.NewFileSet(),
 		filesDst:       make(map[string]*dst.File),
 		fileDirectives: make(map[string][]*Directive),
 		modifiedFiles:  make(map[string]bool),
 		defFileName:    "",
-		suffix:         suffix,
 	}
 }
 
@@ -73,7 +70,8 @@ func (t *CollectInfo) AddTraceFiles(filenames []string) error {
 }
 
 // AddTraceDir adds all .go files in a directory to the CollectInfo struct
-func (t *CollectInfo) AddTraceDir(dir string, recursive bool) error {
+func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
+	needIgnore func(filename string) bool) error {
 	// search all .go files
 	files := []string{}
 	if recursive {
@@ -95,12 +93,14 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool) error {
 	}
 
 	filteredFiles := []string{}
-	// exclusive suffix files *_<suffix>.go
 	for _, filename := range files {
-		if !strings.HasSuffix(filename, fmt.Sprintf("_%s.go", t.suffix)) {
-			log.Infof("add traced file %s", filename)
-			filteredFiles = append(filteredFiles, filename)
+		if needIgnore != nil && needIgnore(filename) {
+			continue
 		}
+		log.Infof("add traced file %s", filename)
+		filteredFiles = append(filteredFiles, filename)
+
+		continue
 	}
 
 	// reduce same file names in the list
@@ -293,10 +293,6 @@ func (t *CollectInfo) Files() []string {
 // FileDst returns the dst.File for a file
 func (t *CollectInfo) FileDst(filename string) *dst.File {
 	return t.filesDst[filename]
-}
-
-func (t *CollectInfo) PatchedFilename(filename string) string {
-	return utils.NewFilenameForTracing(filename, t.suffix)
 }
 
 func (t *CollectInfo) IsModified(filename string) bool {
