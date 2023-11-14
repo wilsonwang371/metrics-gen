@@ -3,11 +3,23 @@ package gometrics
 import (
 	"fmt"
 	"go/token"
+	"os"
 
+	log "github.com/sirupsen/logrus"
+
+	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
 	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
 )
 
-func TrackFuncTimeStmts(funcName string) []dst.Stmt {
+func TraceFuncTimesPkgs() map[string]string {
+	resMap := map[string]string{}
+	resMap["metrics"] = "github.com/hashicorp/go-metrics"
+	resMap["time"] = "time"
+	return resMap
+}
+
+func TraceFuncTimeStmts(funcName string) []dst.Stmt {
 	return []dst.Stmt{
 		&dst.DeferStmt{
 			Call: &dst.CallExpr{
@@ -134,4 +146,59 @@ func DefineFuncInitDecl() *dst.FuncDecl {
 		},
 	}
 	return res
+}
+
+func PatchProject(d *parse.CollectInfo) error {
+	if !d.HasDefinitionDirective() {
+		return fmt.Errorf("no definition directive found")
+	}
+	for _, filename := range d.Files() {
+		directives, err := d.FileDirectives(filename)
+		if err != nil {
+			return err
+		}
+		for _, directive := range directives {
+			if directive.TraceType() == parse.DEFINE {
+				// add the init function
+				initDecl := DefineFuncInitDecl()
+				pkgs := DefineFuncInitPkgs()
+				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
+					return err
+				}
+			} else if directive.TraceType() == parse.ON {
+				// add the defer statement
+				stmts := TraceFuncTimeStmts(directive.Declaration().(*dst.FuncDecl).Name.Name)
+				pkgs := TraceFuncTimesPkgs()
+				if err := d.SetFunctionTimeTracing(*directive, stmts, pkgs); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func StoreFiles(d *parse.CollectInfo) error {
+	allFiles := d.Files()
+	for _, filename := range allFiles {
+		if !d.IsModified(filename) {
+			continue
+		}
+
+		fDst := d.FileDst(filename)
+		newFilename := d.PatchedFilename(filename)
+
+		// create file
+		f, err := os.Create(newFilename)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		log.Infof("writing to %s", newFilename)
+		if err := decorator.Fprint(f, fDst); err != nil {
+			return err
+		}
+	}
+	return nil
 }

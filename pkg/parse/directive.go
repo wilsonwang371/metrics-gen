@@ -24,7 +24,15 @@ type Directive struct {
 	traceType   TraceType
 }
 
-func GetDirectiveType(comment string) (TraceType, error) {
+func (d *Directive) TraceType() TraceType {
+	return d.traceType
+}
+
+func (d *Directive) Declaration() dst.Decl {
+	return d.declaration
+}
+
+func ParseStringDirectiveType(comment string) (TraceType, error) {
 	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_0-9]*) ?.*`)
 	sub := r.FindStringSubmatch(comment)
 	if len(sub) == 2 {

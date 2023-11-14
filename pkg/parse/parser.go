@@ -18,8 +18,9 @@ import (
 type CollectInfo struct {
 	fileSet        *token.FileSet
 	filesDst       map[string]*dst.File    // map of file name to dst.File
-	defFileName    string                  // file that contains the definition of the metric global variable
 	fileDirectives map[string][]*Directive // map of file name to slice of directives
+	modifiedFiles  map[string]bool         // map of file name to bool
+	defFileName    string                  // file that contains the definition of the metric global variable
 	suffix         string                  // suffix for generated files
 }
 
@@ -28,8 +29,9 @@ func NewCollectInfo(suffix string) *CollectInfo {
 	return &CollectInfo{
 		fileSet:        token.NewFileSet(),
 		filesDst:       make(map[string]*dst.File),
-		defFileName:    "",
 		fileDirectives: make(map[string][]*Directive),
+		modifiedFiles:  make(map[string]bool),
+		defFileName:    "",
 		suffix:         suffix,
 	}
 }
@@ -179,9 +181,12 @@ func (t *CollectInfo) AddPkgImport(filename string, name string, pkgUrl string) 
 	if name != pkgUrl {
 		importDecl.Specs[0].(*dst.ImportSpec).Name = &dst.Ident{Name: name}
 	}
+	log.Infof("add import %s %s", name, pkgUrl)
 	f.Decls = append([]dst.Decl{
 		importDecl,
 	}, f.Decls...)
+
+	t.modifiedFiles[filename] = true
 	return nil
 }
 
@@ -204,13 +209,15 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 			addedDecl.Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
 
 			// insert code before the declaration index
+			log.Infof("add global define function for: %s", d.filename)
 			file.Decls = append(file.Decls[:directiveIdx], append([]dst.Decl{addedDecl}, file.Decls[directiveIdx:]...)...)
 
 			// add import
 			for name, pkgUrl := range pkgs {
-				t.AddPkgImport(d.filename, pkgUrl, name)
+				t.AddPkgImport(d.filename, name, pkgUrl)
 			}
 
+			t.modifiedFiles[d.filename] = true
 			return nil
 		}
 	}
@@ -218,7 +225,7 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 }
 
 // SetFunctionTracking sets the function time tracing
-func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt) error {
+func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt, pkgs map[string]string) error {
 	directiveIdx := -1
 	file := t.filesDst[d.filename]
 	for idx, decl := range file.Decls {
@@ -230,7 +237,17 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt)
 	if directiveIdx == -1 {
 		return fmt.Errorf("declaration not found")
 	}
+	log.Infof("add function time tracing for: %s", d.declaration.(*dst.FuncDecl).Name.Name)
 	d.declaration.(*dst.FuncDecl).Body.List = append(addedStmts, d.declaration.(*dst.FuncDecl).Body.List...)
+
+	// add import
+	for name, pkgUrl := range pkgs {
+		if err := t.AddPkgImport(d.filename, name, pkgUrl); err != nil {
+			log.Info(err) // ignore error
+		}
+	}
+
+	t.modifiedFiles[d.filename] = true
 	return nil
 }
 
@@ -244,7 +261,7 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 	}
 	for _, decl := range file.Decls {
 		for _, decor := range decl.Decorations().Start.All() {
-			if traceType, err := GetDirectiveType(decor); err == nil {
+			if traceType, err := ParseStringDirectiveType(decor); err == nil {
 				res = append(res, &Directive{
 					filename:    filename,
 					declaration: decl,
@@ -260,4 +277,26 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 // HasDefinitionDirective checks if the CollectInfo struct has a definition directive
 func (t *CollectInfo) HasDefinitionDirective() bool {
 	return t.defFileName != ""
+}
+
+// Files returns all the files in the CollectInfo struct
+func (t *CollectInfo) Files() []string {
+	res := []string{}
+	for filename := range t.filesDst {
+		res = append(res, filename)
+	}
+	return res
+}
+
+// FileDst returns the dst.File for a file
+func (t *CollectInfo) FileDst(filename string) *dst.File {
+	return t.filesDst[filename]
+}
+
+func (t *CollectInfo) PatchedFilename(filename string) string {
+	return utils.NewFilenameForTracing(filename, t.suffix)
+}
+
+func (t *CollectInfo) IsModified(filename string) bool {
+	return t.modifiedFiles[filename]
 }

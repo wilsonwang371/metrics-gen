@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
+	"code.byted.org/bge-infra/metrics-gen/pkg/platform/gometrics"
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
@@ -50,7 +51,13 @@ var rootCmd = &cobra.Command{
 
 		info = parse.NewCollectInfo(generatedFileSuffix)
 		addAllDirs()
+		if err := gometrics.PatchProject(info); err != nil {
+			log.Fatal(err)
+		}
 
+		if err := gometrics.StoreFiles(info); err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 
