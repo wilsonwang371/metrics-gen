@@ -84,3 +84,22 @@ func FetchPackages(goModPath string, pkgs []string) error {
 	}
 	return nil
 }
+
+func ParseArguments(input string) map[string]string {
+	args := make(map[string]string)
+
+	// Split the input string by whitespace
+	parts := strings.Fields(input)
+
+	// Parse each part in the format "key=value"
+	for _, part := range parts {
+		keyValue := strings.SplitN(part, "=", 2)
+		if len(keyValue) == 2 {
+			key := keyValue[0]
+			value := keyValue[1]
+			args[key] = value
+		}
+	}
+
+	return args
+}

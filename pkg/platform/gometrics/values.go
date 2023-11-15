@@ -22,7 +22,7 @@ func TraceFuncTimesPkgs() map[string]string {
 	return resMap
 }
 
-func TraceFuncTimeStmts(funcName string) []dst.Stmt {
+func TraceFuncTimeStmts(filename string, funcName string) []dst.Stmt {
 	return []dst.Stmt{
 		&dst.DeferStmt{
 			Call: &dst.CallExpr{
@@ -39,7 +39,7 @@ func TraceFuncTimeStmts(funcName string) []dst.Stmt {
 						Elts: []dst.Expr{
 							&dst.BasicLit{
 								Kind:  token.STRING,
-								Value: fmt.Sprintf(`"%s"`, funcName),
+								Value: fmt.Sprintf(`"%s#%s"`, filename, funcName),
 							},
 						},
 					},
@@ -155,16 +155,16 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 	if !d.HasDefinitionDirective() {
 		return fmt.Errorf("no definition directive found")
 	}
-	for _, filename := range d.Files() {
-		directives, err := d.FileDirectives(filename)
+	for _, fullpath := range d.Files() {
+		directives, err := d.FileDirectives(fullpath)
 		if err != nil {
 			return err
 		}
 		for _, directive := range directives {
+			base := filepath.Base(fullpath)                      // Get the base (filename) from the full path
+			filename := base[:len(base)-len(filepath.Ext(base))] // Remove the extension
 			if directive.TraceType() == parse.Define {
 				// add the init function
-				base := filepath.Base(d.DefFileName())               // Get the base (filename) from the full path
-				filename := base[:len(base)-len(filepath.Ext(base))] // Remove the extension
 				initDecl := DefineFuncInitDecl(filename)
 				pkgs := DefineFuncInitPkgs()
 				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
@@ -172,7 +172,7 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 				}
 			} else if directive.TraceType() == parse.On {
 				// add the defer statement
-				stmts := TraceFuncTimeStmts(directive.Declaration().(*dst.FuncDecl).Name.Name)
+				stmts := TraceFuncTimeStmts(filename, directive.Declaration().(*dst.FuncDecl).Name.Name)
 				pkgs := TraceFuncTimesPkgs()
 				if err := d.SetFunctionTimeTracing(*directive, stmts, pkgs); err != nil {
 					return err

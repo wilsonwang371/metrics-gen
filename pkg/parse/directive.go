@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
 )
 
@@ -35,9 +36,9 @@ func (d *Directive) Declaration() dst.Decl {
 }
 
 func ParseStringDirectiveType(comment string) (TraceType, error) {
-	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_\-0-9]*) ?.*`)
+	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_\-0-9]*) ?(.*)`)
 	sub := r.FindStringSubmatch(comment)
-	if len(sub) == 2 {
+	if len(sub) >= 2 {
 		switch sub[1] {
 		case "define":
 			return Define, nil
@@ -56,5 +57,16 @@ func ParseStringDirectiveType(comment string) (TraceType, error) {
 		}
 	} else {
 		return Invalid, fmt.Errorf("No match")
+	}
+}
+
+// ParseDirectiveType parses arguments from a trace directive comment
+func ParseDefineDirectiveParams(comment string) (map[string]string, error) {
+	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_\-0-9]*) ?(.*)`)
+	sub := r.FindStringSubmatch(comment)
+	if len(sub) == 3 {
+		return utils.ParseArguments(sub[2]), nil
+	} else {
+		return nil, fmt.Errorf("No match")
 	}
 }

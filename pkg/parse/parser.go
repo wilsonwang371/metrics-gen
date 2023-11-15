@@ -19,7 +19,9 @@ type CollectInfo struct {
 	filesDst       map[string]*dst.File    // map of file name to dst.File
 	fileDirectives map[string][]*Directive // map of file name to slice of directives
 	modifiedFiles  map[string]bool         // map of file name to bool
-	defFileName    string                  // file that contains the definition of the metric global variable
+
+	defFileName string            // file that contains the definition of the metric global variable
+	defParams   map[string]string // map of parameter name to value
 
 	goModPath string
 }
@@ -32,6 +34,8 @@ func NewCollectInfo() *CollectInfo {
 		fileDirectives: make(map[string][]*Directive),
 		modifiedFiles:  make(map[string]bool),
 		defFileName:    "",
+		defParams:      make(map[string]string),
+		goModPath:      "",
 	}
 }
 
@@ -43,7 +47,7 @@ func (t *CollectInfo) AddTraceFile(filename string) error {
 	}
 	t.filesDst[filename] = file // add to map
 
-	allDirectives, err := t.FileDirectives(filename)
+	allDirectives, err := t.readFileDirectives(filename)
 	if err != nil {
 		return err
 	}
@@ -273,7 +277,7 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt,
 }
 
 // return all the directives in a file
-func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
+func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) {
 	res := []*Directive{}
 	file, ok := t.filesDst[filename]
 	if !ok {
@@ -289,6 +293,14 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 					text:        decor,
 					traceType:   traceType,
 				})
+				if traceType != Define {
+					continue
+				}
+				// find all arguments
+				if params, err := ParseDefineDirectiveParams(decor); err == nil {
+					log.Infof("found define directive params: %v", params)
+					t.defParams = params
+				}
 			}
 		}
 	}
@@ -325,6 +337,9 @@ func (t *CollectInfo) GoModPath() string {
 	return t.goModPath
 }
 
-func (t *CollectInfo) DefFileName() string {
-	return t.defFileName
+func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
+	if _, ok := t.fileDirectives[filename]; !ok {
+		return nil, fmt.Errorf("file %s not found", filename)
+	}
+	return t.fileDirectives[filename], nil
 }
