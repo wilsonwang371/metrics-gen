@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/token"
 	"os"
+	"path/filepath"
 
 	log "github.com/sirupsen/logrus"
 
@@ -61,7 +62,7 @@ func DefineFuncInitPkgs() map[string]string {
 	return resMap
 }
 
-func DefineFuncInitDecl() *dst.FuncDecl {
+func DefineFuncInitDecl(name string) *dst.FuncDecl {
 	decl1 := &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.Ident{Name: "inm"},
@@ -127,7 +128,7 @@ func DefineFuncInitDecl() *dst.FuncDecl {
 					Args: []dst.Expr{
 						&dst.BasicLit{
 							Kind:  token.STRING,
-							Value: `"service-name"`,
+							Value: fmt.Sprintf(`"%s"`, name),
 						},
 					},
 				},
@@ -162,7 +163,9 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 		for _, directive := range directives {
 			if directive.TraceType() == parse.Define {
 				// add the init function
-				initDecl := DefineFuncInitDecl()
+				base := filepath.Base(d.DefFileName())               // Get the base (filename) from the full path
+				filename := base[:len(base)-len(filepath.Ext(base))] // Remove the extension
+				initDecl := DefineFuncInitDecl(filename)
 				pkgs := DefineFuncInitPkgs()
 				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
 					return err

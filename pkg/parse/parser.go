@@ -324,3 +324,7 @@ func (t *CollectInfo) GoModPath() string {
 	}
 	return t.goModPath
 }
+
+func (t *CollectInfo) DefFileName() string {
+	return t.defFileName
+}
