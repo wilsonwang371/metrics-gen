@@ -65,6 +65,9 @@ func DefineFuncInitPkgs() map[string]string {
 func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 	var interval, duration string
 
+	runtimeMetrics := "false"
+	var runtimeMetricsInterval string
+
 	if val, ok := d.DefParam("interval"); ok {
 		interval = val
 	} else {
@@ -77,7 +80,21 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 		duration = "3600"
 	}
 
-	decl1 := &dst.AssignStmt{
+	if val, ok := d.DefParam("runtime-metrics"); ok {
+		if val == "true" {
+			runtimeMetrics = "true"
+		}
+	}
+
+	if val, ok := d.DefParam("runtime-metrics-interval"); ok {
+		runtimeMetricsInterval = val
+	} else {
+		runtimeMetricsInterval = "10"
+	}
+
+	stmts := []dst.Stmt{}
+
+	stmts = append(stmts, &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.Ident{Name: "inm"},
 		},
@@ -114,8 +131,8 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 				Start:  []string{"// Setup the inmem sink and signal handler"},
 			},
 		},
-	}
-	decl2 := &dst.ExprStmt{
+	})
+	stmts = append(stmts, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
 				X:   &dst.Ident{Name: "metrics"},
@@ -125,41 +142,78 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 				&dst.Ident{Name: "inm"},
 			},
 		},
+	})
+	stmts = append(stmts, &dst.AssignStmt{
+		Lhs: []dst.Expr{
+			&dst.Ident{Name: "cfg"},
+		},
+		Tok: token.DEFINE,
+		Rhs: []dst.Expr{
+			&dst.CallExpr{
+				Fun: &dst.SelectorExpr{
+					X:   &dst.Ident{Name: "metrics"},
+					Sel: &dst.Ident{Name: "DefaultConfig"},
+				},
+				Args: []dst.Expr{
+					&dst.BasicLit{
+						Kind:  token.STRING,
+						Value: fmt.Sprintf(`"%s"`, name),
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &dst.AssignStmt{
+		Lhs: []dst.Expr{
+			&dst.SelectorExpr{
+				X:   &dst.Ident{Name: "cfg"},
+				Sel: &dst.Ident{Name: "EnableRuntimeMetrics"},
+			},
+		},
+		Tok: token.ASSIGN,
+		Rhs: []dst.Expr{
+			&dst.Ident{Name: runtimeMetrics},
+		},
+	})
+	if runtimeMetrics == "true" {
+		stmts = append(stmts, &dst.AssignStmt{
+			Lhs: []dst.Expr{
+				&dst.SelectorExpr{
+					X:   &dst.Ident{Name: "cfg"},
+					Sel: &dst.Ident{Name: "ProfileInterval"},
+				},
+			},
+			Tok: token.ASSIGN,
+			Rhs: []dst.Expr{
+				&dst.BinaryExpr{
+					X:  &dst.BasicLit{Kind: token.INT, Value: runtimeMetricsInterval},
+					Op: token.MUL,
+					Y: &dst.SelectorExpr{
+						X:   &dst.Ident{Name: "time"},
+						Sel: &dst.Ident{Name: "Second"},
+					},
+				},
+			},
+		})
 	}
-
-	decl3 := &dst.ExprStmt{
+	stmts = append(stmts, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
 				X:   &dst.Ident{Name: "metrics"},
 				Sel: &dst.Ident{Name: "NewGlobal"},
 			},
 			Args: []dst.Expr{
-				&dst.CallExpr{
-					Fun: &dst.SelectorExpr{
-						X:   &dst.Ident{Name: "metrics"},
-						Sel: &dst.Ident{Name: "DefaultConfig"},
-					},
-					Args: []dst.Expr{
-						&dst.BasicLit{
-							Kind:  token.STRING,
-							Value: fmt.Sprintf(`"%s"`, name),
-						},
-					},
-				},
+				&dst.Ident{Name: "cfg"},
 				&dst.Ident{Name: "inm"},
 			},
 		},
-	}
+	})
 
 	res := &dst.FuncDecl{
 		Name: dst.NewIdent("init"),
 		Type: &dst.FuncType{},
 		Body: &dst.BlockStmt{
-			List: []dst.Stmt{
-				decl1,
-				decl2,
-				decl3,
-			},
+			List: stmts,
 		},
 	}
 	return res
