@@ -17,7 +17,7 @@ import (
 
 func TraceFuncTimesPkgs() map[string]string {
 	resMap := map[string]string{}
-	resMap["metrics"] = "github.com/hashicorp/go-metrics"
+	resMap["gometrics"] = "github.com/hashicorp/go-metrics"
 	resMap["time"] = "time"
 	return resMap
 }
@@ -27,7 +27,7 @@ func TraceFuncTimeStmts(filename string, funcName string) []dst.Stmt {
 		&dst.DeferStmt{
 			Call: &dst.CallExpr{
 				Fun: &dst.SelectorExpr{
-					X:   &dst.Ident{Name: "metrics"},
+					X:   &dst.Ident{Name: "gometrics"},
 					Sel: &dst.Ident{Name: "MeasureSince"},
 				},
 				Args: []dst.Expr{
@@ -57,7 +57,7 @@ func TraceFuncTimeStmts(filename string, funcName string) []dst.Stmt {
 
 func DefineFuncInitPkgs() map[string]string {
 	resMap := map[string]string{}
-	resMap["metrics"] = "github.com/hashicorp/go-metrics"
+	resMap["gometrics"] = "github.com/hashicorp/go-metrics"
 	resMap["time"] = "time"
 	return resMap
 }
@@ -102,7 +102,7 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 		Rhs: []dst.Expr{
 			&dst.CallExpr{
 				Fun: &dst.SelectorExpr{
-					X:   &dst.Ident{Name: "metrics"},
+					X:   &dst.Ident{Name: "gometrics"},
 					Sel: &dst.Ident{Name: "NewInmemSink"},
 				},
 				Args: []dst.Expr{
@@ -135,7 +135,7 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 	stmts = append(stmts, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
-				X:   &dst.Ident{Name: "metrics"},
+				X:   &dst.Ident{Name: "gometrics"},
 				Sel: &dst.Ident{Name: "DefaultInmemSignal"},
 			},
 			Args: []dst.Expr{
@@ -151,7 +151,7 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 		Rhs: []dst.Expr{
 			&dst.CallExpr{
 				Fun: &dst.SelectorExpr{
-					X:   &dst.Ident{Name: "metrics"},
+					X:   &dst.Ident{Name: "gometrics"},
 					Sel: &dst.Ident{Name: "DefaultConfig"},
 				},
 				Args: []dst.Expr{
@@ -199,7 +199,7 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
 	stmts = append(stmts, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
-				X:   &dst.Ident{Name: "metrics"},
+				X:   &dst.Ident{Name: "gometrics"},
 				Sel: &dst.Ident{Name: "NewGlobal"},
 			},
 			Args: []dst.Expr{

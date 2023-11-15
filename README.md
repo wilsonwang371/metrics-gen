@@ -44,6 +44,12 @@ func Test() {
 
 ```
 
+Meaning of the `//+trace:define` parameters:
+- `interval`: The interval at which metrics are collected.
+- `duration`: The duration for which metrics are stored.
+- `runtime-metrics`: Whether to collect runtime metrics, such as memory usage and goroutine count.
+- `runtime-metrics-interval`: The interval at which runtime metrics are collected.
+
 ### 2. Run `metrics-gen`
 
 ```bash
@@ -104,4 +110,3 @@ kill -USR1 <pid>
 - `metrics-gen` only supports `//+trace:...` comments. Other comment formats are not supported.
 - `metrics-gen` only supports top-level `//+trace:...` comments. It does not support comments defined within other functions.
 - `//+trace:define` cannot be used in a file that already contains a function named `init`.
-- `//+trace:define` can be used at most once in a project.
