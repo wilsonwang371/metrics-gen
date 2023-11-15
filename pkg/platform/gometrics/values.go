@@ -62,7 +62,21 @@ func DefineFuncInitPkgs() map[string]string {
 	return resMap
 }
 
-func DefineFuncInitDecl(name string) *dst.FuncDecl {
+func DefineFuncInitDecl(d *parse.CollectInfo, name string) *dst.FuncDecl {
+	var interval, duration string
+
+	if val, ok := d.DefParam("interval"); ok {
+		interval = val
+	} else {
+		interval = "10"
+	}
+
+	if val, ok := d.DefParam("duration"); ok {
+		duration = val
+	} else {
+		duration = "3600"
+	}
+
 	decl1 := &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.Ident{Name: "inm"},
@@ -76,7 +90,7 @@ func DefineFuncInitDecl(name string) *dst.FuncDecl {
 				},
 				Args: []dst.Expr{
 					&dst.BinaryExpr{
-						X:  &dst.BasicLit{Kind: token.INT, Value: "10"},
+						X:  &dst.BasicLit{Kind: token.INT, Value: interval},
 						Op: token.MUL,
 						Y: &dst.SelectorExpr{
 							X:   &dst.Ident{Name: "time"},
@@ -84,11 +98,11 @@ func DefineFuncInitDecl(name string) *dst.FuncDecl {
 						},
 					},
 					&dst.BinaryExpr{
-						X:  &dst.BasicLit{Kind: token.INT, Value: "24"},
+						X:  &dst.BasicLit{Kind: token.INT, Value: duration},
 						Op: token.MUL,
 						Y: &dst.SelectorExpr{
 							X:   &dst.Ident{Name: "time"},
-							Sel: &dst.Ident{Name: "Hour"},
+							Sel: &dst.Ident{Name: "Second"},
 						},
 					},
 				},
@@ -165,7 +179,7 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 			filename := base[:len(base)-len(filepath.Ext(base))] // Remove the extension
 			if directive.TraceType() == parse.Define {
 				// add the init function
-				initDecl := DefineFuncInitDecl(filename)
+				initDecl := DefineFuncInitDecl(d, filename)
 				pkgs := DefineFuncInitPkgs()
 				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
 					return err

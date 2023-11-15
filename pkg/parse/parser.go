@@ -343,3 +343,8 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 	}
 	return t.fileDirectives[filename], nil
 }
+
+func (t *CollectInfo) DefParam(name string) (string, bool) {
+	val, ok := t.defParams[name]
+	return val, ok
+}
