@@ -113,4 +113,3 @@ kill -USR1 <pid>
 - `metrics-gen` only supports Go source files.
 - `metrics-gen` only supports `//+trace:...` comments. Other comment formats are not supported.
 - `metrics-gen` only supports top-level `//+trace:...` comments. It does not support comments defined within other functions.
-- `//+trace:define` cannot be used in a file that already contains a function named `init`.
