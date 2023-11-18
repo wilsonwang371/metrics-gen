@@ -20,8 +20,7 @@ type CollectInfo struct {
 	fileDirectives map[string][]*Directive // map of file name to slice of directives
 	modifiedFiles  map[string]bool         // map of file name to bool
 
-	defFileName string            // file that contains the definition of the metric global variable
-	defParams   map[string]string // map of parameter name to value
+	defFileName string // file that contains the definition of the metric global variable
 
 	goModPath string
 }
@@ -34,14 +33,14 @@ func NewCollectInfo() *CollectInfo {
 		fileDirectives: make(map[string][]*Directive),
 		modifiedFiles:  make(map[string]bool),
 		defFileName:    "",
-		defParams:      make(map[string]string),
 		goModPath:      "",
 	}
 }
 
 // AddTraceFile adds a file to the CollectInfo struct
 func (t *CollectInfo) AddTraceFile(filename string) error {
-	file, err := decorator.ParseFile(t.fileSet, filename, nil, parser.ParseComments)
+	file, err := decorator.ParseFile(t.fileSet, filename, nil,
+		parser.ParseComments)
 	if err != nil {
 		return err
 	}
@@ -82,7 +81,9 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 	// search all .go files
 	files := []string{}
 	if recursive {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo,
+			err error,
+		) error {
 			if filepath.Ext(path) == ".go" {
 				// add go files to list
 				files = append(files, path)
@@ -158,9 +159,12 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 
 // AddPkgImport adds a package import to a file
 // if the name and pkgUrl are the same, then the name is omitted
-func (t *CollectInfo) AddPkgImport(filename string, name string, pkgUrl string) error {
+func (t *CollectInfo) AddPkgImport(filename string, name string,
+	pkgUrl string,
+) error {
 	if t.hasPkgImport(filename, pkgUrl) {
-		return fmt.Errorf(fmt.Sprintf("package \"%s\" already imported", pkgUrl))
+		return fmt.Errorf(fmt.Sprintf("package \"%s\" already imported",
+			pkgUrl))
 	}
 	f, ok := t.filesDst[filename]
 	if !ok {
@@ -206,7 +210,9 @@ func (t *CollectInfo) AddPkgImport(filename string, name string, pkgUrl string) 
 }
 
 // SetGlobalDefineFunc sets the global define function
-func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, pkgs map[string]string) error {
+func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl,
+	pkgs map[string]string,
+) error {
 	directiveIdx := -1
 	file := t.filesDst[d.filename]
 	for idx, decl := range file.Decls {
@@ -231,7 +237,8 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 
 			// insert code before the declaration index
 			log.Debugf("add global define function for: %s", d.filename)
-			file.Decls = append(file.Decls[:directiveIdx], append([]dst.Decl{addedDecl}, file.Decls[directiveIdx:]...)...)
+			file.Decls = append(file.Decls[:directiveIdx],
+				append([]dst.Decl{addedDecl}, file.Decls[directiveIdx:]...)...)
 
 			// add import
 			for name, pkgUrl := range pkgs {
@@ -246,7 +253,9 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl, 
 }
 
 // SetFunctionTracking sets the function time tracing
-func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt, pkgs map[string]string) error {
+func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
+	inFuncStmts []dst.Stmt, pkgs map[string]string,
+) error {
 	directiveIdx := -1
 	file := t.filesDst[d.filename]
 	for idx, decl := range file.Decls {
@@ -258,12 +267,47 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, addedStmts []dst.Stmt,
 	if directiveIdx == -1 {
 		return fmt.Errorf("declaration not found")
 	}
+
+	// insert code before the function declaration
+	if len(globalDecl) != 0 {
+		for idx, decor := range d.declaration.Decorations().Start.All() {
+			if d.text == decor {
+				var prevComment, nextComment []string
+
+				// copy decorations to prevComment and nextComment
+				prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
+				nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
+
+				prevComment = append(prevComment, "// +trace:begin-generated")
+				nextComment = append([]string{"// +trace:end-generated"}, nextComment...)
+
+				globalDecl[0].Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
+				d.declaration.Decorations().Start.Replace(nextComment...)
+
+				// insert code before the declaration index
+				log.Debugf("add global define function for: %s", d.filename)
+				file.Decls = append(file.Decls[:directiveIdx],
+					append(globalDecl, file.Decls[directiveIdx:]...)...)
+
+				// add import
+				for name, pkgUrl := range pkgs {
+					t.AddPkgImport(d.filename, name, pkgUrl)
+				}
+
+				t.modifiedFiles[d.filename] = true
+				break
+			}
+		}
+	}
+
+	// insert code in the beginning of the function
 	log.Infof("add function time tracing for: %s", d.declaration.(*dst.FuncDecl).Name.Name)
 
-	addedStmts[0].Decorations().Start.Prepend("\n", "// +trace:begin-generated")
-	addedStmts[len(addedStmts)-1].Decorations().End.Append("\n", "// +trace:end-generated")
+	inFuncStmts[0].Decorations().Start.Prepend("\n", "// +trace:begin-generated")
+	inFuncStmts[len(inFuncStmts)-1].Decorations().End.Append("\n", "// +trace:end-generated")
 
-	d.declaration.(*dst.FuncDecl).Body.List = append(addedStmts, d.declaration.(*dst.FuncDecl).Body.List...)
+	d.declaration.(*dst.FuncDecl).Body.List = append(inFuncStmts,
+		d.declaration.(*dst.FuncDecl).Body.List...)
 
 	// add import
 	for name, pkgUrl := range pkgs {
@@ -287,20 +331,20 @@ func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) 
 	for _, decl := range file.Decls {
 		for _, decor := range decl.Decorations().Start.All() {
 			if traceType, err := ParseStringDirectiveType(decor); err == nil {
-				res = append(res, &Directive{
+				d := &Directive{
 					filename:    filename,
 					declaration: decl,
 					text:        decor,
 					traceType:   traceType,
-				})
-				if traceType != Define {
-					continue
 				}
 				// find all arguments
-				if params, err := ParseDefineDirectiveParams(decor); err == nil {
-					log.Infof("found define directive params: %v", params)
-					t.defParams = params
+				if params, err := ParseDirectiveParams(decor); err == nil {
+					if len(params) != 0 {
+						log.Debugf("found directive params: %v", params)
+					}
+					d.params = params
 				}
+				res = append(res, d)
 			}
 		}
 	}
@@ -342,9 +386,4 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 		return nil, fmt.Errorf("file %s not found", filename)
 	}
 	return t.fileDirectives[filename], nil
-}
-
-func (t *CollectInfo) DefParam(name string) (string, bool) {
-	val, ok := t.defParams[name]
-	return val, ok
 }

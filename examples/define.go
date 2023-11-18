@@ -9,7 +9,7 @@ import (
 // +trace:define
 
 // start
-// + trace:on
+// + trace:execution-time
 func define_func1() {
 	// this a comment
 	time.Sleep(100 * time.Millisecond)

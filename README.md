@@ -1,4 +1,3 @@
-
 # metrics-gen
 
 `metrics-gen` is a Go code generation tool that can inject code into Go source files based on directive comments specified within the source code. It allows you to automate the generation of metrics-related code, saving you time and ensuring consistency in your codebase.
@@ -16,7 +15,7 @@ go get code.byted.org/bge-infra/metrics-gen
 ```
 
 ## Compile
-    
+
 ```bash
 make build
 ```
@@ -35,7 +34,7 @@ make build
 // it will also start the runtime metrics collector.
 
 
-// +trace:on
+// +trace:execution-time
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {
@@ -45,10 +44,15 @@ func Test() {
 ```
 
 Meaning of the `//+trace:define` parameters:
+
 - `interval`: The interval at which metrics are collected.
 - `duration`: The duration for which metrics are stored.
 - `runtime-metrics`: Whether to collect runtime metrics, such as memory usage and goroutine count.
 - `runtime-metrics-interval`: The interval at which runtime metrics are collected.
+
+Meaning of the `//+trace:execution-time` parameters:
+
+- `cooldown-time-ms`: The cooldown time in milliseconds. If the function is called again within the cooldown time, the execution time will not be measured.
 
 ### 2. Run `metrics-gen`
 
@@ -83,7 +87,7 @@ func init() {
 
 // +trace:end-generated
 
-// +trace:on
+// +trace:execution-time
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {
