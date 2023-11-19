@@ -26,7 +26,7 @@ func TraceFuncTimeStmts(filename string, funcName string,
 	directive *parse.Directive,
 ) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt) {
 	cooldownTimeMs := ""
-	if v, ok := directive.Param("cooldown-time-ms"); ok {
+	if v, ok := directive.Param("cooldown-time-us"); ok {
 		cooldownTimeMs = v
 	}
 
@@ -72,7 +72,7 @@ func TraceFuncTimeStmts(filename string, funcName string,
 						Op: token.MUL,
 						Y: &dst.SelectorExpr{
 							X:   &dst.Ident{Name: "time"},
-							Sel: &dst.Ident{Name: "Millisecond"},
+							Sel: &dst.Ident{Name: "Microsecond"},
 						},
 					},
 				},
