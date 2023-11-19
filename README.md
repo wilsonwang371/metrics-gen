@@ -79,7 +79,7 @@ func init() {
   // Setup the inmem sink and signal handler
   inm := metrics.NewInmemSink(30*time.Second, 1800*time.Second)
   metrics.DefaultInmemSignal(inm)
-  cfg := metrics.DefaultConfig("application")
+  cfg := metrics.DefaultConfig("testfile")
   cfg.EnableRuntimeMetrics = true
   cfg.ProfileInterval = 60 * time.Second
   metrics.NewGlobal(cfg, inm)
@@ -92,7 +92,7 @@ func init() {
 // the beginning of the function to the end of the function.
 func Test() {
   // +trace:begin-generated
-  defer metrics.MeasureSince([]string{"application#Create"}, time.Now())
+  defer metrics.MeasureSince([]string{"testfile#Test"}, time.Now())
   // +trace:end-generated
   // ...
 }
