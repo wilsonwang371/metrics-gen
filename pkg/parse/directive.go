@@ -13,7 +13,8 @@ type TraceType int
 
 const (
 	Define TraceType = iota
-	ExecutionTime
+	FuncExecTime
+	InnerExecTime
 	Empty
 	GenBegine
 	GenEnd
@@ -48,8 +49,10 @@ func ParseStringDirectiveType(comment string) (TraceType, error) {
 		switch sub[1] {
 		case "define":
 			return Define, nil
-		case "execution-time":
-			return ExecutionTime, nil
+		case "func-exec-time":
+			return FuncExecTime, nil
+		case "inner-exec-time":
+			return InnerExecTime, nil
 		case "":
 			return Empty, nil
 		case "begin-generated":

@@ -34,7 +34,7 @@ make build
 // it will also start the runtime metrics collector.
 
 
-// +trace:execution-time
+// +trace:func-exec-time
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {
@@ -50,7 +50,7 @@ Meaning of the `//+trace:define` parameters:
 - `runtime-metrics`: Whether to collect runtime metrics, such as memory usage and goroutine count.
 - `runtime-metrics-interval`: The interval at which runtime metrics are collected.
 
-Meaning of the `//+trace:execution-time` parameters:
+Meaning of the `//+trace:func-exec-time` parameters:
 
 - `cooldown-time-us`: The cooldown time in microseconds. If the function is called again within the cooldown time, the execution time will not be measured.
 
@@ -87,7 +87,7 @@ func init() {
 
 // +trace:end-generated
 
-// +trace:execution-time
+// +trace:func-exec-time
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {

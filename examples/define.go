@@ -9,7 +9,7 @@ import (
 // +trace:define
 
 // start
-// + trace:execution-time cooldown-time-us=500
+// + trace:func-exec-time cooldown-time-us=500
 func define_func1() {
 	// this a comment
 	time.Sleep(100 * time.Millisecond)
@@ -21,6 +21,8 @@ func main() {
 	for i := 0; i < 10; i++ {
 		go define_func1()
 	}
+
+	// +trace:inner-exec-time
 	time.Sleep(2 * time.Second)
 	// send signal SIGUSR1 to self process trace
 	pid := os.Getpid()

@@ -350,12 +350,24 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
 					return err
 				}
-			} else if directive.TraceType() == parse.ExecutionTime {
+			} else if directive.TraceType() == parse.FuncExecTime {
 				// add the defer statement
 				g, l := TraceFuncTimeStmts(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
 				pkgs := TraceFuncTimesPkgs()
 				if err := d.SetFunctionTimeTracing(*directive, g, l, pkgs); err != nil {
+					return err
+				}
+			} else if directive.TraceType() == parse.InnerExecTime {
+				// add the defer statement
+				if _, ok := directive.Param("cooldown-time-us"); ok {
+					return fmt.Errorf("cooldown-time-us is not supported for inner-exec-time")
+				}
+
+				_, l := TraceFuncTimeStmts(filename,
+					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
+				pkgs := TraceFuncTimesPkgs()
+				if err := d.SetFunctionInnerTimeTracing(*directive, l, pkgs); err != nil {
 					return err
 				}
 			} else if directive.TraceType() == parse.GenBegine ||
