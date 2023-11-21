@@ -12,6 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
+
+	"github.com/google/uuid"
 )
 
 type CollectInfo struct {
@@ -23,10 +25,12 @@ type CollectInfo struct {
 	defFileName string // file that contains the definition of the metric global variable
 
 	goModPath string
+	genUUID   string
 }
 
 // NewCollectInfo creates a new CollectInfo struct
 func NewCollectInfo() *CollectInfo {
+	tmpUUID := uuid.New().String()
 	return &CollectInfo{
 		fileSet:        token.NewFileSet(),
 		filesDst:       make(map[string]*dst.File),
@@ -34,6 +38,7 @@ func NewCollectInfo() *CollectInfo {
 		modifiedFiles:  make(map[string]bool),
 		defFileName:    "",
 		goModPath:      "",
+		genUUID:        tmpUUID,
 	}
 }
 
@@ -229,8 +234,8 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl,
 			prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
 			nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
 
-			prevComment = append(prevComment, "// +trace:begin-generated")
-			nextComment = append([]string{"// +trace:end-generated"}, nextComment...)
+			prevComment = append(prevComment, BeginUUID(t.genUUID))
+			nextComment = append([]string{EndUUID(t.genUUID)}, nextComment...)
 
 			addedDecl.Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
 			d.declaration.Decorations().Start.Replace(nextComment...)
@@ -268,13 +273,13 @@ func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive, inFuncStmts []dst
 				prevComment = append(prevComment, stmt.Decorations().Start.All()[:idx2+1]...)
 				nextComment = append(nextComment, stmt.Decorations().Start.All()[idx2+1:]...)
 
-				prevComment = append(prevComment, "// +trace:begin-generated")
-				nextComment = append([]string{"// +trace:end-generated"}, nextComment...)
+				prevComment = append(prevComment, BeginUUID(t.genUUID))
+				nextComment = append([]string{EndUUID(t.UUID())}, nextComment...)
 
 				log.Infof("prevComment: %v", prevComment)
 				log.Infof("nextComment: %v", nextComment)
 
-				inFuncStmts[0].Decorations().Start.Prepend("\n", "// +trace:begin-generated")
+				inFuncStmts[0].Decorations().Start.Prepend("\n", BeginUUID(t.genUUID))
 				stmt.Decorations().Start.Replace(nextComment...)
 
 				// insert code before the declaration index
@@ -320,8 +325,8 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
 				prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
 				nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
 
-				prevComment = append(prevComment, "// +trace:begin-generated")
-				nextComment = append([]string{"// +trace:end-generated"}, nextComment...)
+				prevComment = append(prevComment, BeginUUID(t.genUUID))
+				nextComment = append([]string{EndUUID(t.UUID())}, nextComment...)
 
 				globalDecl[0].Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
 				d.declaration.Decorations().Start.Replace(nextComment...)
@@ -345,8 +350,8 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
 	// insert code in the beginning of the function
 	log.Infof("add function time tracing for: %s", d.declaration.(*dst.FuncDecl).Name.Name)
 
-	inFuncStmts[0].Decorations().Start.Prepend("\n", "// +trace:begin-generated")
-	inFuncStmts[len(inFuncStmts)-1].Decorations().End.Append("\n", "// +trace:end-generated")
+	inFuncStmts[0].Decorations().Start.Prepend("\n", BeginUUID(t.genUUID))
+	inFuncStmts[len(inFuncStmts)-1].Decorations().End.Append("\n", EndUUID(t.UUID()))
 
 	d.declaration.(*dst.FuncDecl).Body.List = append(inFuncStmts,
 		d.declaration.(*dst.FuncDecl).Body.List...)
@@ -453,4 +458,16 @@ func (t *CollectInfo) FileDirectives(filename string) ([]*Directive, error) {
 		return nil, fmt.Errorf("file %s not found", filename)
 	}
 	return t.fileDirectives[filename], nil
+}
+
+func (t *CollectInfo) UUID() string {
+	return t.genUUID
+}
+
+func BeginUUID(uuid string) string {
+	return fmt.Sprintf("// +trace:begin-generated uuid=%s", uuid)
+}
+
+func EndUUID(uuid string) string {
+	return fmt.Sprintf("// +trace:end-generated uuid=%s", uuid)
 }
