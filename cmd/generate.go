@@ -49,13 +49,13 @@ func addAllDirs() {
 	for _, dir := range searchDirs {
 		err := info.AddTraceDir(dir, false, needIgnore)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("error adding dir %s: %v", dir, err)
 		}
 	}
 	for _, dir := range recursiveSearchDirs {
 		err := info.AddTraceDir(dir, true, needIgnore)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("error adding dir %s: %v", dir, err)
 		}
 	}
 
@@ -107,14 +107,14 @@ func RunGenerate(cmd *cobra.Command, args []string) {
 	info = parse.NewCollectInfo()
 	addAllDirs()
 	if err := gometrics.PatchProject(info, dryRun); err != nil {
-		log.Fatal(err)
+		log.Fatalf("error patching project: %v", err)
 	}
 
 	if err := gometrics.StoreFiles(info, inplace, suffix, dryRun); err != nil {
-		log.Fatal(err)
+		log.Fatalf("error storing files: %v", err)
 	}
 
 	if err := gometrics.PostPatch(info, dryRun); err != nil {
-		log.Fatal(err)
+		log.Fatalf("error post patch: %v", err)
 	}
 }

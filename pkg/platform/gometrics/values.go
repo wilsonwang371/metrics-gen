@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"go/token"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -25,14 +27,18 @@ func TraceFuncTimesPkgs() map[string]string {
 func TraceFuncTimeStmts(filename string, funcName string,
 	directive *parse.Directive,
 ) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt) {
-	cooldownTimeMs := ""
-	if v, ok := directive.Param("cooldown-time-us"); ok {
-		cooldownTimeMs = v
+	cooldownTime := ""
+	if v, ok := directive.Param("cooldown-time"); ok {
+		cooldownTime = v
+		if _, err := time.ParseDuration(cooldownTime); err != nil {
+			log.Fatalf("invalid cooldown-time: %s, %s", err, cooldownTime)
+		}
 	}
 
 	g := []dst.Decl{}
 	l := []dst.Stmt{}
-	if cooldownTimeMs != "" {
+	if cooldownTime != "" {
+		cooldownTimeVarName, _ := timeConvertStatement("cooldown_time_", cooldownTime)
 		g = []dst.Decl{
 			&dst.GenDecl{
 				Tok: token.VAR,
@@ -53,7 +59,33 @@ func TraceFuncTimeStmts(filename string, funcName string,
 					},
 				},
 			},
+			&dst.GenDecl{
+				Tok: token.VAR,
+				Specs: []dst.Spec{
+					&dst.ValueSpec{
+						Names: []*dst.Ident{
+							{Name: cooldownTimeVarName},
+							{Name: "_"},
+						},
+						Values: []dst.Expr{
+							&dst.CallExpr{
+								Fun: &dst.SelectorExpr{
+									X:   &dst.Ident{Name: "time"},
+									Sel: &dst.Ident{Name: "ParseDuration"},
+								},
+								Args: []dst.Expr{
+									&dst.BasicLit{
+										Kind:  token.STRING,
+										Value: fmt.Sprintf(`"%s"`, cooldownTime),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		}
+
 		l = []dst.Stmt{
 			&dst.IfStmt{
 				Cond: &dst.BinaryExpr{
@@ -67,14 +99,7 @@ func TraceFuncTimeStmts(filename string, funcName string,
 						},
 					},
 					Op: token.GTR,
-					Y: &dst.BinaryExpr{
-						X:  &dst.BasicLit{Kind: token.INT, Value: cooldownTimeMs},
-						Op: token.MUL,
-						Y: &dst.SelectorExpr{
-							X:   &dst.Ident{Name: "time"},
-							Sel: &dst.Ident{Name: "Microsecond"},
-						},
-					},
+					Y:  &dst.Ident{Name: cooldownTimeVarName},
 				},
 				Body: &dst.BlockStmt{
 					List: []dst.Stmt{
@@ -169,6 +194,44 @@ func DefineFuncInitPkgs() map[string]string {
 	return resMap
 }
 
+// Function to generate a random number string of a specified length
+func generateRandomNumberString(length int) string {
+	const charset = "0123456789" // You can add more characters if needed
+	result := make([]byte, length)
+
+	for i := 0; i < length; i++ {
+		result[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(result)
+}
+
+func timeConvertStatement(varPrefix string, timeStr string) (string, dst.Stmt) {
+	varName := fmt.Sprintf("%s%s", varPrefix, generateRandomNumberString(8))
+	return varName, &dst.AssignStmt{
+		Lhs: []dst.Expr{
+			&dst.Ident{Name: varName},
+			// underscore is used to ignore the error
+			&dst.Ident{Name: "_"},
+		},
+		Tok: token.DEFINE,
+		Rhs: []dst.Expr{
+			&dst.CallExpr{
+				Fun: &dst.SelectorExpr{
+					X:   &dst.Ident{Name: "time"},
+					Sel: &dst.Ident{Name: "ParseDuration"},
+				},
+				Args: []dst.Expr{
+					&dst.BasicLit{
+						Kind:  token.STRING,
+						Value: fmt.Sprintf(`"%s"`, timeStr),
+					},
+				},
+			},
+		},
+	}
+}
+
 func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	directive *parse.Directive,
 ) *dst.FuncDecl {
@@ -180,13 +243,23 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	if val, ok := directive.Param("interval"); ok {
 		interval = val
 	} else {
-		interval = "10"
+		interval = "10s"
+	}
+	// parse interval, fail if invalid
+	_, err := time.ParseDuration(interval)
+	if err != nil {
+		log.Fatalf("invalid interval: %s, %s", err, interval)
 	}
 
 	if val, ok := directive.Param("duration"); ok {
 		duration = val
 	} else {
-		duration = "3600"
+		duration = "3600s"
+	}
+	// parse duration, fail if invalid
+	_, err = time.ParseDuration(duration)
+	if err != nil {
+		log.Fatalf("invalid duration: %s, %s", err, duration)
 	}
 
 	if val, ok := directive.Param("runtime-metrics"); ok {
@@ -198,10 +271,28 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	if val, ok := directive.Param("runtime-metrics-interval"); ok {
 		runtimeMetricsInterval = val
 	} else {
-		runtimeMetricsInterval = "10"
+		runtimeMetricsInterval = "10s"
+	}
+	// parse runtime-metrics-interval, fail if invalid
+	_, err = time.ParseDuration(runtimeMetricsInterval)
+	if err != nil {
+		log.Fatalf("invalid runtime-metrics-interval: %s, %s", err, runtimeMetricsInterval)
 	}
 
 	stmts := []dst.Stmt{}
+
+	// generate the statements to parse the interval and duration
+	intervalVarName, tmp := timeConvertStatement("interval_", interval)
+	stmts = append(stmts, tmp)
+
+	durationVarName, tmp := timeConvertStatement("duration_", duration)
+	stmts = append(stmts, tmp)
+
+	runtimeMetricsIntervalVarName, tmp := timeConvertStatement("runtime_metrics_interval_",
+		runtimeMetricsInterval)
+	if runtimeMetrics == "true" {
+		stmts = append(stmts, tmp)
+	}
 
 	stmts = append(stmts, &dst.AssignStmt{
 		Lhs: []dst.Expr{
@@ -215,22 +306,8 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 					Sel: &dst.Ident{Name: "NewInmemSink"},
 				},
 				Args: []dst.Expr{
-					&dst.BinaryExpr{
-						X:  &dst.BasicLit{Kind: token.INT, Value: interval},
-						Op: token.MUL,
-						Y: &dst.SelectorExpr{
-							X:   &dst.Ident{Name: "time"},
-							Sel: &dst.Ident{Name: "Second"},
-						},
-					},
-					&dst.BinaryExpr{
-						X:  &dst.BasicLit{Kind: token.INT, Value: duration},
-						Op: token.MUL,
-						Y: &dst.SelectorExpr{
-							X:   &dst.Ident{Name: "time"},
-							Sel: &dst.Ident{Name: "Second"},
-						},
-					},
+					&dst.Ident{Name: intervalVarName},
+					&dst.Ident{Name: durationVarName},
 				},
 			},
 		},
@@ -294,17 +371,7 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 			},
 			Tok: token.ASSIGN,
 			Rhs: []dst.Expr{
-				&dst.BinaryExpr{
-					X: &dst.BasicLit{
-						Kind:  token.INT,
-						Value: runtimeMetricsInterval,
-					},
-					Op: token.MUL,
-					Y: &dst.SelectorExpr{
-						X:   &dst.Ident{Name: "time"},
-						Sel: &dst.Ident{Name: "Second"},
-					},
-				},
+				&dst.Ident{Name: runtimeMetricsIntervalVarName},
 			},
 		})
 	}
@@ -360,8 +427,8 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 				}
 			} else if directive.TraceType() == parse.InnerExecTime {
 				// add the defer statement
-				if _, ok := directive.Param("cooldown-time-us"); ok {
-					return fmt.Errorf("cooldown-time-us is not supported for inner-exec-time")
+				if _, ok := directive.Param("cooldown-time"); ok {
+					return fmt.Errorf("cooldown-time is not supported for inner-exec-time")
 				}
 
 				_, l := TraceFuncTimeStmts(filename,

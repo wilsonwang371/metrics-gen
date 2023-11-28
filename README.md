@@ -52,7 +52,7 @@ Meaning of the `//+trace:define` parameters:
 
 Meaning of the `//+trace:func-exec-time` parameters:
 
-- `cooldown-time-us`: The cooldown time in microseconds. If the function is called again within the cooldown time, the execution time will not be measured.
+- `cooldown-time`: The cooldown time. If the function is called again within the cooldown time, the execution time will not be measured.
 
 ### 2. Run `metrics-gen`
 
