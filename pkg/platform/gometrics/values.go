@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"go/token"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,29 +11,74 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
+	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
 	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
 )
 
-func TraceFuncTimesPkgs() map[string]string {
-	resMap := map[string]string{}
-	resMap["gometrics"] = "github.com/hashicorp/go-metrics"
-	resMap["time"] = "time"
-	return resMap
+var pkgsRequired = map[string]*parse.PackageInfo{
+	"gometrics": {Name: "gometrics", Path: "github.com/hashicorp/go-metrics"},
+	"time":      {Name: "time", Path: "time"},
+}
+
+type goMetricsProvider struct {
+	inplace bool
+	suffix  string
+	dryRun  bool
+}
+
+func NewGoMetricsProvider(
+	inplace bool,
+	suffix string,
+	dryRun bool,
+) platform.MetricsProvider {
+	return &goMetricsProvider{
+		inplace: inplace,
+		suffix:  suffix,
+		dryRun:  dryRun,
+	}
+}
+
+// PrePatch implements platform.MetricsProvider.
+func (g *goMetricsProvider) PrePatch(info *parse.CollectInfo) error {
+	if !info.HasDefinitionDirective() {
+		return fmt.Errorf("no definition directive found")
+	}
+	return nil
+}
+
+// Patch implements platform.MetricsProvider.
+func (g *goMetricsProvider) Patch(info *parse.CollectInfo) error {
+	if err := PatchProject(info, g.dryRun); err != nil {
+		return err
+	}
+	return nil
+}
+
+// PostPatch implements platform.MetricsProvider.
+func (g *goMetricsProvider) PostPatch(info *parse.CollectInfo) error {
+	if err := StoreFiles(info, g.inplace, g.suffix, g.dryRun); err != nil {
+		return err
+	}
+	if err := UpdatePackages(info, g.dryRun); err != nil {
+		return err
+	}
+	return nil
 }
 
 func TraceFuncTimeStmts(filename string, funcName string,
 	directive *parse.Directive,
-) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt) {
+) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt, identPatchTable []*dst.Ident) {
 	cooldownTime := ""
-	if v, ok := directive.Param("cooldown-time"); ok {
+	if v, ok := directive.Param("gm-cooldown-time"); ok {
 		cooldownTime = v
 		if _, err := time.ParseDuration(cooldownTime); err != nil {
-			log.Fatalf("invalid cooldown-time: %s, %s", err, cooldownTime)
+			log.Fatalf("invalid gm-cooldown-time: %s, %s", err, cooldownTime)
 		}
 	}
 
+	identPatchTable = []*dst.Ident{}
 	g := []dst.Decl{}
 	l := []dst.Stmt{}
 	if cooldownTime != "" {
@@ -85,6 +129,21 @@ func TraceFuncTimeStmts(filename string, funcName string,
 				},
 			},
 		}
+		// add time.Time
+		identPatchTable = append(identPatchTable,
+			g[0].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).Type.(*dst.Ident))
+		// add 1st time
+		identPatchTable = append(
+			identPatchTable,
+			g[0].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).Values[0].(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
+		// add 2nd time
+		identPatchTable = append(
+			identPatchTable,
+			g[1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).Values[0].(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
 
 		l = []dst.Stmt{
 			&dst.IfStmt{
@@ -150,6 +209,31 @@ func TraceFuncTimeStmts(filename string, funcName string,
 				},
 			},
 		}
+
+		// add 1st time
+		identPatchTable = append(
+			identPatchTable,
+			l[0].(*dst.IfStmt).Cond.(*dst.BinaryExpr).X.(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
+		// add 2nd time
+		identPatchTable = append(
+			identPatchTable,
+			l[0].(*dst.IfStmt).Body.List[0].(*dst.AssignStmt).Rhs[0].(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
+		// add 3rd time
+		identPatchTable = append(
+			identPatchTable,
+			l[0].(*dst.IfStmt).Body.List[1].(*dst.DeferStmt).Call.Args[1].(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
+		// add gometrics
+		identPatchTable = append(
+			identPatchTable,
+			l[0].(*dst.IfStmt).Body.List[1].(*dst.DeferStmt).Call.
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+		)
 	} else {
 		l = []dst.Stmt{
 			&dst.DeferStmt{
@@ -182,32 +266,20 @@ func TraceFuncTimeStmts(filename string, funcName string,
 				},
 			},
 		}
+		// add gemetrics
+		identPatchTable = append(identPatchTable,
+			l[0].(*dst.DeferStmt).Call.Fun.(*dst.SelectorExpr).X.(*dst.Ident))
+		// add time
+		identPatchTable = append(identPatchTable,
+			l[0].(*dst.DeferStmt).Call.Args[1].(*dst.CallExpr).
+				Fun.(*dst.SelectorExpr).X.(*dst.Ident))
 	}
 
-	return g, l
-}
-
-func DefineFuncInitPkgs() map[string]string {
-	resMap := map[string]string{}
-	resMap["gometrics"] = "github.com/hashicorp/go-metrics"
-	resMap["time"] = "time"
-	return resMap
-}
-
-// Function to generate a random number string of a specified length
-func generateRandomNumberString(length int) string {
-	const charset = "0123456789" // You can add more characters if needed
-	result := make([]byte, length)
-
-	for i := 0; i < length; i++ {
-		result[i] = charset[rand.Intn(len(charset))]
-	}
-
-	return string(result)
+	return g, l, identPatchTable
 }
 
 func timeConvertStatement(varPrefix string, timeStr string) (string, dst.Stmt) {
-	varName := fmt.Sprintf("%s%s", varPrefix, generateRandomNumberString(8))
+	varName := fmt.Sprintf("%s%s", varPrefix, utils.GenerateRandNumString(8))
 	return varName, &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.Ident{Name: varName},
@@ -234,13 +306,13 @@ func timeConvertStatement(varPrefix string, timeStr string) (string, dst.Stmt) {
 
 func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	directive *parse.Directive,
-) *dst.FuncDecl {
+) (*dst.FuncDecl, []*dst.Ident) {
 	var interval, duration string
 
 	runtimeMetrics := "false"
 	var runtimeMetricsInterval string
 
-	if val, ok := directive.Param("interval"); ok {
+	if val, ok := directive.Param("gm-interval"); ok {
 		interval = val
 	} else {
 		interval = "10s"
@@ -248,10 +320,10 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	// parse interval, fail if invalid
 	_, err := time.ParseDuration(interval)
 	if err != nil {
-		log.Fatalf("invalid interval: %s, %s", err, interval)
+		log.Fatalf("invalid gm-interval: %s, %s", err, interval)
 	}
 
-	if val, ok := directive.Param("duration"); ok {
+	if val, ok := directive.Param("gm-duration"); ok {
 		duration = val
 	} else {
 		duration = "3600s"
@@ -259,10 +331,10 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	// parse duration, fail if invalid
 	_, err = time.ParseDuration(duration)
 	if err != nil {
-		log.Fatalf("invalid duration: %s, %s", err, duration)
+		log.Fatalf("invalid gm-duration: %s, %s", err, duration)
 	}
 
-	if val, ok := directive.Param("runtime-metrics"); ok {
+	if val, ok := directive.Param("gm-runtime-metrics"); ok {
 		if val == "true" {
 			runtimeMetrics = "true"
 		}
@@ -273,10 +345,11 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	} else {
 		runtimeMetricsInterval = "10s"
 	}
-	// parse runtime-metrics-interval, fail if invalid
+	// parse gm-runtime-metrics-interval, fail if invalid
 	_, err = time.ParseDuration(runtimeMetricsInterval)
 	if err != nil {
-		log.Fatalf("invalid runtime-metrics-interval: %s, %s", err, runtimeMetricsInterval)
+		log.Fatalf("invalid gm-runtime-metrics-interval: %s, %s",
+			err, runtimeMetricsInterval)
 	}
 
 	stmts := []dst.Stmt{}
@@ -288,11 +361,15 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 	durationVarName, tmp := timeConvertStatement("duration_", duration)
 	stmts = append(stmts, tmp)
 
-	runtimeMetricsIntervalVarName, tmp := timeConvertStatement("runtime_metrics_interval_",
-		runtimeMetricsInterval)
+	runtimeMetricsIntervalVarName, tmp := timeConvertStatement(
+		"runtime_metrics_interval_",
+		runtimeMetricsInterval,
+	)
 	if runtimeMetrics == "true" {
 		stmts = append(stmts, tmp)
 	}
+
+	identPatchTable := []*dst.Ident{}
 
 	stmts = append(stmts, &dst.AssignStmt{
 		Lhs: []dst.Expr{
@@ -318,6 +395,12 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 			},
 		},
 	})
+	identPatchTable = append(
+		identPatchTable,
+		stmts[len(stmts)-1].(*dst.AssignStmt).Rhs[0].(*dst.CallExpr).
+			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
 	stmts = append(stmts, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
@@ -329,6 +412,12 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 			},
 		},
 	})
+	identPatchTable = append(
+		identPatchTable,
+		stmts[len(stmts)-1].(*dst.ExprStmt).X.(*dst.CallExpr).
+			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
 	stmts = append(stmts, &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.Ident{Name: "cfg"},
@@ -349,6 +438,12 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 			},
 		},
 	})
+	identPatchTable = append(
+		identPatchTable,
+		stmts[len(stmts)-1].(*dst.AssignStmt).Rhs[0].(*dst.CallExpr).
+			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
 	stmts = append(stmts, &dst.AssignStmt{
 		Lhs: []dst.Expr{
 			&dst.SelectorExpr{
@@ -387,54 +482,52 @@ func DefineFuncInitDecl(d *parse.CollectInfo, name string,
 			},
 		},
 	})
+	identPatchTable = append(
+		identPatchTable,
+		stmts[len(stmts)-1].(*dst.ExprStmt).X.(*dst.CallExpr).
+			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
 
-	res := &dst.FuncDecl{
-		Name: dst.NewIdent("init"),
-		Type: &dst.FuncType{},
-		Body: &dst.BlockStmt{
-			List: stmts,
-		},
-	}
-	return res
+	res := platform.DSTInitFunc(stmts)
+	return res, identPatchTable
 }
 
 func PatchProject(d *parse.CollectInfo, _ bool) error {
-	if !d.HasDefinitionDirective() {
-		return fmt.Errorf("no definition directive found")
-	}
 	for _, fullpath := range d.Files() {
 		directives, err := d.FileDirectives(fullpath)
 		if err != nil {
 			return err
 		}
 		for _, directive := range directives {
-			base := filepath.Base(fullpath)                      // Get the base (filename) from the full path
+			base := filepath.Base(
+				fullpath,
+			) // Get the base (filename) from the full path
 			filename := base[:len(base)-len(filepath.Ext(base))] // Remove the extension
 			if directive.TraceType() == parse.Define {
 				// add the init function
-				initDecl := DefineFuncInitDecl(d, filename, directive)
-				pkgs := DefineFuncInitPkgs()
-				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgs); err != nil {
+				initDecl, patchTable := DefineFuncInitDecl(d, filename, directive)
+				if err := d.SetGlobalDefineFunc(*directive, initDecl, pkgsRequired,
+					patchTable); err != nil {
 					return err
 				}
 			} else if directive.TraceType() == parse.FuncExecTime {
 				// add the defer statement
-				g, l := TraceFuncTimeStmts(filename,
+				g, l, patchTable := TraceFuncTimeStmts(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
-				pkgs := TraceFuncTimesPkgs()
-				if err := d.SetFunctionTimeTracing(*directive, g, l, pkgs); err != nil {
+				if err := d.SetFunctionTimeTracing(*directive, g, l, pkgsRequired,
+					patchTable); err != nil {
 					return err
 				}
 			} else if directive.TraceType() == parse.InnerExecTime {
 				// add the defer statement
-				if _, ok := directive.Param("cooldown-time"); ok {
-					return fmt.Errorf("cooldown-time is not supported for inner-exec-time")
+				if _, ok := directive.Param("gm-cooldown-time"); ok {
+					return fmt.Errorf("gm-cooldown-time is not supported for inner-exec-time")
 				}
 
-				_, l := TraceFuncTimeStmts(filename,
+				_, l, patchTable := TraceFuncTimeStmts(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
-				pkgs := TraceFuncTimesPkgs()
-				if err := d.SetFunctionInnerTimeTracing(*directive, l, pkgs); err != nil {
+				if err := d.SetFunctionInnerTimeTracing(*directive, l, pkgsRequired,
+					patchTable); err != nil {
 					return err
 				}
 			} else if directive.TraceType() == parse.GenBegine ||
@@ -491,7 +584,7 @@ func StoreFiles(d *parse.CollectInfo, inplace bool, suffix string, dryRun bool) 
 	return nil
 }
 
-func PostPatch(d *parse.CollectInfo, dryRun bool) error {
+func UpdatePackages(d *parse.CollectInfo, dryRun bool) error {
 	if dryRun {
 		return nil
 	}

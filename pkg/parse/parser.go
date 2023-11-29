@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
@@ -110,6 +112,14 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 		if err != nil {
 			return err
 		}
+		// check if go.mod exists
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			// save go.mod location
+			if t.goModPath != "" {
+				return fmt.Errorf("multiple go.mod files")
+			}
+			t.goModPath = filepath.Join(dir, "go.mod")
+		}
 	}
 
 	filteredFiles := []string{}
@@ -130,19 +140,30 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 	return nil
 }
 
-// hasPkgImport checks if a file already has a package import
-func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
+type PackageInfo struct {
+	Name string
+	Path string
+}
+
+// enum for hasPkgImport return
+type PkgCheckResult int
+
+const (
+	PkgExistsAndNoChange PkgCheckResult = iota
+	PkgNotExistsAndChangeName
+	PkgExistsAndChangeName
+	PkgNotExists
+)
+
+// hasPkgImport checks if a file already has a package import, and returns the new name for the import
+func (t *CollectInfo) hasPkgImport(
+	filename string,
+	importName string,
+	pkgUrl string,
+) (PkgCheckResult, string) {
 	f, ok := t.filesDst[filename]
 	if !ok {
 		panic("file not found")
-	}
-
-	// check if the file already has the import
-	for _, imp := range f.Imports {
-		// check if the import is already there
-		if imp.Path.Value == fmt.Sprintf(`"%s"`, pkgUrl) {
-			return true
-		}
 	}
 
 	// check if the file has import declaration
@@ -151,15 +172,35 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 			if genDecl.Tok == token.IMPORT {
 				for _, spec := range genDecl.Specs {
 					if importSpec, ok := spec.(*dst.ImportSpec); ok {
-						if importSpec.Path.Value == pkgUrl {
-							return true
+						// check if the import is already there
+						tmpName := ""
+						if importSpec.Name != nil {
+							tmpName = importSpec.Name.Name
+						}
+						if tmpName == "" {
+							tmp := strings.Trim(importSpec.Path.Value, `"`)
+							tmpName = filepath.Base(tmp)
+						}
+						tmpName2 := importName
+						if tmpName2 == "" {
+							tmpName2 = filepath.Base(pkgUrl)
+						}
+						if tmpName == tmpName2 {
+							if importSpec.Path.Value == fmt.Sprintf(`"%s"`, pkgUrl) {
+								return PkgExistsAndNoChange, ""
+							}
+							return PkgNotExistsAndChangeName, ""
+						} else {
+							if importSpec.Path.Value == fmt.Sprintf(`"%s"`, pkgUrl) {
+								return PkgExistsAndChangeName, tmpName
+							}
 						}
 					}
 				}
 			}
 		}
 	}
-	return false
+	return PkgNotExists, ""
 }
 
 // AddPkgImport adds a package import to a file
@@ -167,10 +208,22 @@ func (t *CollectInfo) hasPkgImport(filename string, pkgUrl string) bool {
 func (t *CollectInfo) AddPkgImport(filename string, name string,
 	pkgUrl string,
 ) error {
-	if t.hasPkgImport(filename, pkgUrl) {
-		return fmt.Errorf(fmt.Sprintf("package \"%s\" already imported",
-			pkgUrl))
+	log.Debugf("add package import: %s %s %s", filename, name, pkgUrl)
+
+	res, newName := t.hasPkgImport(filename, name, pkgUrl)
+	switch res {
+	case PkgExistsAndNoChange:
+		return nil
+	case PkgExistsAndChangeName:
+		return fmt.Errorf("use existing import name \"%s\"", newName)
+	case PkgNotExistsAndChangeName:
+		return fmt.Errorf("change import name")
+	case PkgNotExists:
+		// do nothing
+	default:
+		panic("unknown result")
 	}
+
 	f, ok := t.filesDst[filename]
 	if !ok {
 		panic("file not found")
@@ -215,9 +268,69 @@ func (t *CollectInfo) AddPkgImport(filename string, name string,
 }
 
 // SetGlobalDefineFunc sets the global define function
-func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl,
-	pkgs map[string]string,
+func (t *CollectInfo) SetGlobalDefineFunc(d Directive,
+	addedDecl *dst.FuncDecl,
+	pkgsIn map[string]*PackageInfo,
+	pkgPatchTable []*dst.Ident,
 ) error {
+	// deep copy pkgs
+	pkgs := make(map[string]*PackageInfo)
+	for k, v := range pkgsIn {
+		pkgs[k] = &PackageInfo{
+			Name: v.Name,
+			Path: v.Path,
+		}
+	}
+
+	for _, decor := range d.declaration.Decorations().Start.All() {
+		if d.text == decor {
+			// add import
+			pkgsUpdated := false
+			for name, pkg := range pkgs {
+				// loop until AddPkgImport succeeds
+				for {
+					if err := t.AddPkgImport(d.filename, pkg.Name, pkg.Path); err != nil {
+						if err.Error() == "change import name" {
+							pkg.Name = fmt.Sprintf("%s_%d", pkg.Name, rand.Intn(100))
+							pkgsUpdated = true
+							continue
+						} else if strings.Contains(err.Error(), "use existing import name") {
+							// extract the name from the error message that enclosed by double quotes
+							// e.g. "use existing import name \"prometheus\""
+							// then replace the pkg name with the new name
+							newName := strings.Trim(
+								strings.Split(err.Error(), "\"")[1],
+								"\"")
+							log.Infof("use existing import name \"%s\" for pkg %+v", newName, pkg)
+							pkgs[name].Name = newName
+							pkgsUpdated = true
+							continue
+						} else {
+							return err
+						}
+					}
+					break
+				}
+			}
+
+			if pkgsUpdated {
+				for _, ident := range pkgPatchTable {
+					for name, pkg := range pkgs {
+						// search if pkg name is a substring of ident name
+						if strings.Contains(ident.Name, name) {
+							// replace the substring with the new name
+							ident.Name = strings.Replace(ident.Name, name, pkg.Name, 1)
+						}
+					}
+				}
+			}
+
+			t.modifiedFiles[d.filename] = true
+			// break 2 loops
+			goto out
+		}
+	}
+out:
 	directiveIdx := -1
 	file := t.filesDst[d.filename]
 	for idx, decl := range file.Decls {
@@ -231,24 +344,24 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl,
 			var prevComment, nextComment []string
 
 			// copy decorations to prevComment and nextComment
-			prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
-			nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
+			prevComment = append(
+				prevComment,
+				d.declaration.Decorations().Start.All()[:idx+1]...)
+			nextComment = append(
+				nextComment,
+				d.declaration.Decorations().Start.All()[idx+1:]...)
 
 			prevComment = append(prevComment, BeginUUID(t.genUUID))
 			nextComment = append([]string{EndUUID(t.genUUID)}, nextComment...)
 
-			addedDecl.Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
+			addedDecl.Decorations().Start.Replace(
+				append([]string{"\n"}, prevComment...)...)
 			d.declaration.Decorations().Start.Replace(nextComment...)
 
 			// insert code before the declaration index
 			log.Debugf("add global define function for: %s", d.filename)
 			file.Decls = append(file.Decls[:directiveIdx],
 				append([]dst.Decl{addedDecl}, file.Decls[directiveIdx:]...)...)
-
-			// add import
-			for name, pkgUrl := range pkgs {
-				t.AddPkgImport(d.filename, name, pkgUrl)
-			}
 
 			t.modifiedFiles[d.filename] = true
 			return nil
@@ -258,12 +371,79 @@ func (t *CollectInfo) SetGlobalDefineFunc(d Directive, addedDecl *dst.FuncDecl,
 }
 
 // SetFunctionInnerTimeTracing sets the function inner time tracing
-func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive, inFuncStmts []dst.Stmt, pkgs map[string]string,
+func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive,
+	inFuncStmts []dst.Stmt,
+	pkgsIn map[string]*PackageInfo,
+	pkgPatchTable []*dst.Ident,
 ) error {
+	// deep copy pkgs
+	pkgs := make(map[string]*PackageInfo)
+	for k, v := range pkgsIn {
+		pkgs[k] = &PackageInfo{
+			Name: v.Name,
+			Path: v.Path,
+		}
+	}
+
 	funDecl, ok := d.declaration.(*dst.FuncDecl)
 	if !ok {
 		return fmt.Errorf("declaration is not a function")
 	}
+	for _, stmt := range funDecl.Body.List {
+		for _, decor := range stmt.Decorations().Start.All() {
+			if d.text == decor {
+				// add import
+				pkgsUpdated := false
+				for name, pkg := range pkgs {
+					for {
+						if err := t.AddPkgImport(d.filename, pkg.Name, pkg.Path); err != nil {
+							if err.Error() == "change import name" {
+								pkg.Name = fmt.Sprintf("%s_%d", pkg.Name, rand.Intn(100))
+								pkgsUpdated = true
+								continue
+							} else if strings.Contains(err.Error(), "use existing import name") {
+								// extract the name from the error message that enclosed by double quotes
+								// e.g. "use existing import name \"prometheus\""
+								// then replace the pkg name with the new name
+								newName := strings.Trim(
+									strings.Split(err.Error(), "\"")[1],
+									"\"")
+								log.Infof("use existing import name \"%s\" for pkg %+v", newName, pkg)
+								pkgs[name].Name = newName
+								pkgsUpdated = true
+								continue
+							} else {
+								return err
+							}
+						}
+						break
+					}
+				}
+
+				if pkgsUpdated {
+					for _, ident := range pkgPatchTable {
+						for name, pkg := range pkgs {
+							// search if pkg name is a substring of ident name
+							if strings.Contains(ident.Name, name) {
+								// replace the substring with the new name
+								ident.Name = strings.Replace(
+									ident.Name,
+									name,
+									pkg.Name,
+									1,
+								)
+							}
+						}
+					}
+				}
+
+				t.modifiedFiles[d.filename] = true
+				// break 2 loops
+				goto out
+			}
+		}
+	}
+out:
 	for idx, stmt := range funDecl.Body.List {
 		for idx2, decor := range stmt.Decorations().Start.All() {
 			if d.text == decor {
@@ -286,11 +466,6 @@ func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive, inFuncStmts []dst
 				funDecl.Body.List = append(funDecl.Body.List[:idx],
 					append(inFuncStmts, funDecl.Body.List[idx:]...)...)
 
-				// add import
-				for name, pkgUrl := range pkgs {
-					t.AddPkgImport(d.filename, name, pkgUrl)
-				}
-
 				t.modifiedFiles[d.filename] = true
 				return nil
 			}
@@ -300,9 +475,64 @@ func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive, inFuncStmts []dst
 }
 
 // SetFunctionTracking sets the function time tracing
-func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
-	inFuncStmts []dst.Stmt, pkgs map[string]string,
+func (t *CollectInfo) SetFunctionTimeTracing(d Directive,
+	globalDecl []dst.Decl,
+	inFuncStmts []dst.Stmt,
+	pkgsIn map[string]*PackageInfo,
+	pkgPatchTable []*dst.Ident,
 ) error {
+	if len(inFuncStmts) == 0 {
+		return fmt.Errorf("no statements to insert")
+	}
+
+	// deep copy pkgs
+	pkgs := make(map[string]*PackageInfo)
+	for k, v := range pkgsIn {
+		pkgs[k] = &PackageInfo{
+			Name: v.Name,
+			Path: v.Path,
+		}
+	}
+
+	// add import
+	pkgsUpdated := false
+	for name, pkg := range pkgs {
+		for {
+			if err := t.AddPkgImport(d.filename, pkg.Name, pkg.Path); err != nil {
+				if err.Error() == "change import name" {
+					pkg.Name = fmt.Sprintf("%s_%d", pkg.Name, rand.Intn(100))
+					pkgsUpdated = true
+					continue
+				} else if strings.Contains(err.Error(), "use existing import name") {
+					// extract the name from the error message that enclosed by double quotes
+					// e.g. "use existing import name \"prometheus\""
+					// then replace the pkg name with the new name
+					newName := strings.Trim(
+						strings.Split(err.Error(), "\"")[1],
+						"\"")
+					log.Infof("use existing import name \"%s\" for pkg %+v", newName, pkg)
+					pkgs[name].Name = newName
+					pkgsUpdated = true
+					continue
+				} else {
+					return err
+				}
+			}
+			break
+		}
+	}
+	if pkgsUpdated {
+		for _, ident := range pkgPatchTable {
+			for name, pkg := range pkgs {
+				// search if pkg name is a substring of ident name
+				if strings.Contains(ident.Name, name) {
+					// replace the substring with the new name
+					ident.Name = strings.Replace(ident.Name, name, pkg.Name, 1)
+				}
+			}
+		}
+	}
+
 	directiveIdx := -1
 	file := t.filesDst[d.filename]
 	for idx, decl := range file.Decls {
@@ -322,24 +552,24 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
 				var prevComment, nextComment []string
 
 				// copy decorations to prevComment and nextComment
-				prevComment = append(prevComment, d.declaration.Decorations().Start.All()[:idx+1]...)
-				nextComment = append(nextComment, d.declaration.Decorations().Start.All()[idx+1:]...)
+				prevComment = append(
+					prevComment,
+					d.declaration.Decorations().Start.All()[:idx+1]...)
+				nextComment = append(
+					nextComment,
+					d.declaration.Decorations().Start.All()[idx+1:]...)
 
 				prevComment = append(prevComment, BeginUUID(t.genUUID))
 				nextComment = append([]string{EndUUID(t.UUID())}, nextComment...)
 
-				globalDecl[0].Decorations().Start.Replace(append([]string{"\n"}, prevComment...)...)
+				globalDecl[0].Decorations().Start.Replace(
+					append([]string{"\n"}, prevComment...)...)
 				d.declaration.Decorations().Start.Replace(nextComment...)
 
 				// insert code before the declaration index
 				log.Debugf("add global define function for: %s", d.filename)
 				file.Decls = append(file.Decls[:directiveIdx],
 					append(globalDecl, file.Decls[directiveIdx:]...)...)
-
-				// add import
-				for name, pkgUrl := range pkgs {
-					t.AddPkgImport(d.filename, name, pkgUrl)
-				}
 
 				t.modifiedFiles[d.filename] = true
 				break
@@ -348,20 +578,16 @@ func (t *CollectInfo) SetFunctionTimeTracing(d Directive, globalDecl []dst.Decl,
 	}
 
 	// insert code in the beginning of the function
-	log.Infof("add function time tracing for: %s", d.declaration.(*dst.FuncDecl).Name.Name)
+	log.Infof(
+		"add function time tracing for: %s",
+		d.declaration.(*dst.FuncDecl).Name.Name,
+	)
 
 	inFuncStmts[0].Decorations().Start.Prepend("\n", BeginUUID(t.genUUID))
 	inFuncStmts[len(inFuncStmts)-1].Decorations().End.Append("\n", EndUUID(t.UUID()))
 
 	d.declaration.(*dst.FuncDecl).Body.List = append(inFuncStmts,
 		d.declaration.(*dst.FuncDecl).Body.List...)
-
-	// add import
-	for name, pkgUrl := range pkgs {
-		if err := t.AddPkgImport(d.filename, name, pkgUrl); err != nil {
-			log.Debug(err) // ignore error
-		}
-	}
 
 	t.modifiedFiles[d.filename] = true
 	return nil

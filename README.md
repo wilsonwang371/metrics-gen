@@ -28,32 +28,37 @@ make build
 
 ```go
 
-// +trace:define interval=30 duration=1800 runtime-metrics=true runtime-metrics-interval=60
-// Above comment will generate a function named "init" in the same package. It will initialize the metrics
-// with the specified interval, duration and runtime-metrics-interval. If runtime-metrics is set to true,
-// it will also start the runtime metrics collector.
+package main
 
+import "time"
+
+// +trace:define gm-interval=30 gm-duration=1800 gm-runtime-metrics=true gm-runtime-metrics-interval=60
+// Above comment will generate a function named "init" in the same package. It will initialize the metrics
+// with the specified gm-interval, gm-duration and gm-runtime-metrics-interval. If gm-runtime-metricsis set to true,
+// it will also start the runtime metrics collector.
 
 // +trace:func-exec-time
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {
-  // ...
+	time.Sleep(500 * time.Millisecond)
+	return
 }
+
 
 ```
 
 Meaning of the `//+trace:define` parameters:
 
-- `interval`: The interval at which metrics are collected.
-- `duration`: The duration for which metrics are stored.
+- `gm-interval`: The interval at which metrics are collected by go-metrics.
+- `gm-duration`: The duration for which metrics are stored by go-metrics.
 - `runtime-metrics`: Whether to collect runtime metrics, such as memory usage and goroutine count.
 - `runtime-metrics-interval`: The interval at which runtime metrics are collected.
 
 Meaning of the `//+trace:func-exec-time` parameters:
 
-- `cooldown-time`: The cooldown time. If the function is called again within the cooldown time, the execution time will not be measured.
-
+- `gm-cooldown-time`: The cooldown time. If the function is called again within the cooldown time, the execution time will not be measured.
+- `prom-port`: The port on which the Prometheus server is listening. If this parameter is specified, the generated code will expose the metrics to the Prometheus server.
 ### 2. Run `metrics-gen`
 
 ```bash
@@ -66,40 +71,58 @@ metrics-gen generate -i -r <path/to/your/project>
 
 ### 3. Check the generated code
 
-The final generated code will look like this:
+By default, `metrics-gen` will generate code that uses the `prometheus` provider. If you want to use the `go-metrics` provider, you can specify the `-p` option when running `metrics-gen`.
+
+The final generated code will look like this if you use `prometheus` provider
 
 ```go
+package main
 
-// +trace:define interval=30 duration=1800 runtime-metrics=true runtime-metrics-interval=60
-// Above comment will generate a function named "init" in the same package. It will initialize the metrics
-// with the specified interval, duration and runtime-metrics-interval. If runtime-metrics is set to true,
-// it will also start the runtime metrics collector.
-// +trace:begin-generated
+import prometheus "github.com/prometheus/client_golang/prometheus"
+import promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
+import http "net/http"
+
+import "time"
+
+// +trace:define gm-interval=30 gm-duration=1800 gm-runtime-metrics=true gm-runtime-metrics-interval=60
+// +trace:begin-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
 func init() {
-  // Setup the inmem sink and signal handler
-  inm := metrics.NewInmemSink(30*time.Second, 1800*time.Second)
-  metrics.DefaultInmemSignal(inm)
-  cfg := metrics.DefaultConfig("testfile")
-  cfg.EnableRuntimeMetrics = true
-  cfg.ProfileInterval = 60 * time.Second
-  metrics.NewGlobal(cfg, inm)
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":9123", nil)
+	}()
 }
 
-// +trace:end-generated
+// +trace:end-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
+// Above comment will generate a function named "init" in the same package. It will initialize the metrics
+// with the specified gm-interval, gm-duration and gm-runtime-metrics-interval. If gm-runtime-metricsis set to true,
+// it will also start the runtime metrics collector.
 
 // +trace:func-exec-time
+// +trace:begin-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
+var test_Test_duration prometheus.Histogram = prometheus.NewHistogram(prometheus.HistogramOpts{Name: "test_Test_duration", Help: "test_Test_duration"})
+
+func init() { prometheus.MustRegister(test_Test_duration) }
+
+// +trace:end-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {
-  // +trace:begin-generated
-  defer metrics.MeasureSince([]string{"testfile#Test"}, time.Now())
-  // +trace:end-generated
-  // ...
+	// +trace:begin-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
+	defer func() {
+		d := time.Since(time.Now())
+		test_Test_duration.Observe(d.Seconds())
+	}()
+	// +trace:end-generated uuid=05eff6f7-15ad-4e2d-b144-2fdec692f051
+	time.Sleep(500 * time.Millisecond)
+	return
 }
 
 ```
 
 ### 4. Dump metrics
+
+For go-metrics provider, you can dump metrics by sending a USR1 signal to the process.
 
 ```bash
 # Send a USR1 signal to the process to dump metrics

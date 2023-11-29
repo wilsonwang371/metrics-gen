@@ -42,6 +42,10 @@ func (d *Directive) Param(name string) (string, bool) {
 	return res, ok
 }
 
+func (d *Directive) Params() map[string]string {
+	return d.params
+}
+
 func ParseStringDirectiveType(comment string) (TraceType, error) {
 	r := regexp.MustCompile(` ?\+ ?trace\:([a-zA-Z_\-0-9]*) ?(.*)`)
 	sub := r.FindStringSubmatch(comment)

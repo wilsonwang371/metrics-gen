@@ -2,33 +2,44 @@ package main
 
 import (
 	"os"
+	"sync"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
-// +trace:define
+// +trace:define prom-port=9123
 
 // start
-// +trace:func-exec-time cooldown-time=5ms
+// +trace:func-exec-time gm-cooldown-time=5ms
 func define_func1() {
 	// this a comment
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	return
 }
 
 func main() {
+	wg := sync.WaitGroup{}
 	// call definf_func1 in goroutines
 	for i := 0; i < 10; i++ {
-		go define_func1()
+		wg.Add(1)
+		go func() {
+			define_func1()
+			wg.Done()
+		}()
 	}
 
+	wg.Wait()
+	log.Infof("main func done")
+
 	// +trace:inner-exec-time
-	time.Sleep(2 * time.Second)
+	time.Sleep(10 * time.Second)
 	// send signal SIGUSR1 to self process trace
 	pid := os.Getpid()
 	selfProcess, _ := os.FindProcess(pid)
 	selfProcess.Signal(syscall.SIGUSR1)
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	return
 }

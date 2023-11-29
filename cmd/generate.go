@@ -8,14 +8,17 @@ import (
 	"regexp"
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
+	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
 	"code.byted.org/bge-infra/metrics-gen/pkg/platform/gometrics"
+	"code.byted.org/bge-infra/metrics-gen/pkg/platform/prometheus"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 var (
-	suffix  string
-	inplace bool
+	suffix   string
+	inplace  bool
+	provider string
 )
 
 // generateCmd represents the generate command
@@ -83,6 +86,9 @@ func init() {
 			"generated files will be named <filename>_tracegen.go")) // suffix option
 	generateCmd.Flags().BoolVarP(&inplace, "inplace", "i",
 		false, "patch files in place") // inplace flag
+	// provider choices
+	generateCmd.Flags().StringVarP(&provider, "provider", "p", "prometheus",
+		"metrics provider to use, supports \"gometrics\" & \"prometheus\"")
 }
 
 func PreRunGenerate(cmd *cobra.Command, args []string) {
@@ -106,15 +112,26 @@ func RunGenerate(cmd *cobra.Command, args []string) {
 
 	info = parse.NewCollectInfo()
 	addAllDirs()
-	if err := gometrics.PatchProject(info, dryRun); err != nil {
-		log.Fatalf("error patching project: %v", err)
+
+	// select provider
+	var p platform.MetricsProvider
+	if provider == "prometheus" {
+		p = prometheus.NewPrometheusProvider(inplace, suffix, dryRun)
+	} else if provider == "gometrics" {
+		p = gometrics.NewGoMetricsProvider(inplace, suffix, dryRun)
+	} else {
+		log.Fatalf("unknown provider: %s", provider)
 	}
 
-	if err := gometrics.StoreFiles(info, inplace, suffix, dryRun); err != nil {
-		log.Fatalf("error storing files: %v", err)
+	if err := p.PrePatch(info); err != nil {
+		log.Fatalf("error pre patch: %v", err)
 	}
 
-	if err := gometrics.PostPatch(info, dryRun); err != nil {
+	if err := p.Patch(info); err != nil {
+		log.Fatalf("error patching: %v", err)
+	}
+
+	if err := p.PostPatch(info); err != nil {
 		log.Fatalf("error post patch: %v", err)
 	}
 }

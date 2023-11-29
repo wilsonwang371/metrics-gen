@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,11 +42,28 @@ func DeduplicateStrings(input []string) []string {
 
 // GoGetPackage runs `go get` on the given import path
 func GoGetPackage(importPath string) error {
-	cmd := exec.Command("go", "get", importPath) // ignore_security_alert RCE
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
+	log.Infof("go get %s", importPath)
+	success := false
+	cmds := [][]string{
+		{"go", "get", "-d", importPath},
+		{"go", "install", importPath},
+	}
+	for _, cmd := range cmds {
+		c := exec.Command(cmd[0], cmd[1:]...)
+		// c.Stdout = os.Stdout
+		// c.Stderr = os.Stderr
+		if err := c.Run(); err == nil {
+			success = true
+			break
+		} else {
+			log.Warnf("failed to run %s: %v", strings.Join(cmd, " "), err)
+		}
+	}
+	if !success {
+		return fmt.Errorf("failed to go get %s", importPath)
+	}
+	return nil
+} // ignore_security_alert RCE
 
 // GetPackages updates the packages in go.mod
 func FetchPackages(goModPath string, pkgs []string) error {
@@ -102,4 +120,16 @@ func ParseArguments(input string) map[string]string {
 	}
 
 	return args
+}
+
+// Function to generate a random number string of a specified length
+func GenerateRandNumString(length int) string {
+	const charset = "0123456789" // You can add more characters if needed
+	result := make([]byte, length)
+
+	for i := 0; i < length; i++ {
+		result[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(result)
 }
