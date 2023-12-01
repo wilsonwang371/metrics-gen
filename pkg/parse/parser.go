@@ -372,6 +372,7 @@ out:
 
 // SetFunctionInnerTimeTracing sets the function inner time tracing
 func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive,
+	globalDecl []dst.Decl,
 	inFuncStmts []dst.Stmt,
 	pkgsIn map[string]*PackageInfo,
 	pkgPatchTable []*dst.Ident,
@@ -444,22 +445,49 @@ func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive,
 		}
 	}
 out:
+	// add global statements
+	directiveIdx := -1
+	file := t.filesDst[d.filename]
+	for idx, decl := range file.Decls {
+		if _, ok := decl.(*dst.FuncDecl); ok {
+			directiveIdx = idx
+		}
+	}
+	if directiveIdx == -1 {
+		return fmt.Errorf("declaration not found")
+	}
+
+	// insert code before the function declaration
+	if len(globalDecl) != 0 {
+		globalDecl[0].Decorations().Start.Prepend("\n", BeginUUID(t.genUUID))
+		globalDecl[len(globalDecl)-1].Decorations().End.Append("\n", EndUUID(t.UUID()))
+		file.Decls = append(file.Decls[:directiveIdx],
+			append(globalDecl, file.Decls[directiveIdx:]...)...)
+	}
+
+	// add local statements
 	for idx, stmt := range funDecl.Body.List {
 		for idx2, decor := range stmt.Decorations().Start.All() {
 			if d.text == decor {
 				var prevComment, nextComment []string
 
 				// copy decorations to prevComment and nextComment
-				prevComment = append(prevComment, stmt.Decorations().Start.All()[:idx2+1]...)
-				nextComment = append(nextComment, stmt.Decorations().Start.All()[idx2+1:]...)
+				prevComment = append(
+					prevComment,
+					stmt.Decorations().Start.All()[:idx2+1]...)
+				nextComment = append(
+					nextComment,
+					stmt.Decorations().Start.All()[idx2+1:]...)
 
 				prevComment = append(prevComment, BeginUUID(t.genUUID))
 				nextComment = append([]string{EndUUID(t.UUID())}, nextComment...)
 
-				log.Infof("prevComment: %v", prevComment)
-				log.Infof("nextComment: %v", nextComment)
+				log.Debugf("prevComment: %v", prevComment)
+				log.Debugf("nextComment: %v", nextComment)
 
-				inFuncStmts[0].Decorations().Start.Prepend("\n", BeginUUID(t.genUUID))
+				// \n prevComment BeginUUID
+				inFuncStmts[0].Decorations().Start.Prepend(prevComment...)
+				inFuncStmts[0].Decorations().Start.Prepend("\n")
 				stmt.Decorations().Start.Replace(nextComment...)
 
 				// insert code before the declaration index
@@ -605,20 +633,24 @@ func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) 
 		// check all prefix comments and find out the directives
 		for _, decor := range decl.Decorations().Start.All() {
 			if traceType, err := ParseStringDirectiveType(decor); err == nil {
-				d := &Directive{
-					filename:    filename,
-					declaration: decl,
-					text:        decor,
-					traceType:   traceType,
-				}
-				// find all arguments
-				if params, err := ParseDirectiveParams(decor); err == nil {
-					if len(params) != 0 {
-						log.Debugf("found directive params: %v", params)
+				if traceType != Invalid {
+					d := &Directive{
+						filename:    filename,
+						declaration: decl,
+						text:        decor,
+						traceType:   traceType,
 					}
-					d.params = params
+					// find all arguments
+					if params, err := ParseDirectiveParams(decor); err == nil {
+						if len(params) != 0 {
+							log.Debugf("found directive params: %v", params)
+						}
+						d.params = params
+					}
+					res = append(res, d)
 				}
-				res = append(res, d)
+			} else {
+				return nil, err
 			}
 		}
 		// check declaration internal code and find out the directives
@@ -626,21 +658,25 @@ func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) 
 			for _, stmt := range funcDecl.Body.List {
 				for _, decor := range stmt.Decorations().Start.All() {
 					if traceType, err := ParseStringDirectiveType(decor); err == nil {
-						log.Infof("found inner directive: %s", decor)
-						d := &Directive{
-							filename:    filename,
-							declaration: funcDecl,
-							text:        decor,
-							traceType:   traceType,
-						}
-						// find all arguments
-						if params, err := ParseDirectiveParams(decor); err == nil {
-							if len(params) != 0 {
-								log.Debugf("found directive params: %v", params)
+						if traceType != Invalid {
+							log.Debugf("found inner directive: %s", decor)
+							d := &Directive{
+								filename:    filename,
+								declaration: funcDecl,
+								text:        decor,
+								traceType:   traceType,
 							}
-							d.params = params
+							// find all arguments
+							if params, err := ParseDirectiveParams(decor); err == nil {
+								if len(params) != 0 {
+									log.Debugf("found directive params: %v", params)
+								}
+								d.params = params
+							}
+							res = append(res, d)
 						}
-						res = append(res, d)
+					} else {
+						return nil, err
 					}
 				}
 			}

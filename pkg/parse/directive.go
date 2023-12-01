@@ -6,13 +6,13 @@ import (
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
-	log "github.com/sirupsen/logrus"
 )
 
 type TraceType int
 
 const (
 	Define TraceType = iota
+	Set
 	FuncExecTime
 	InnerExecTime
 	Empty
@@ -53,6 +53,8 @@ func ParseStringDirectiveType(comment string) (TraceType, error) {
 		switch sub[1] {
 		case "define":
 			return Define, nil
+		case "set":
+			return Set, nil
 		case "func-exec-time":
 			return FuncExecTime, nil
 		case "inner-exec-time":
@@ -64,11 +66,10 @@ func ParseStringDirectiveType(comment string) (TraceType, error) {
 		case "end-generated":
 			return GenEnd, nil
 		default:
-			log.Errorf("Unknown trace type: %s, %+v", comment, sub)
-			panic("Unknown trace type")
+			return Invalid, fmt.Errorf("Unknown trace type: %s, %+v", comment, sub)
 		}
 	} else {
-		return Invalid, fmt.Errorf("No match")
+		return Invalid, nil
 	}
 }
 

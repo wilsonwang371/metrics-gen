@@ -90,7 +90,7 @@ func init() {
 	generateCmd.Flags().StringVarP(&provider, "provider", "p", "prometheus",
 		"metrics provider to use, supports \"gometrics\" & \"prometheus\"")
 	generateCmd.Flags().StringVarP(&metricsPrefix, "metrics-prefix", "m",
-		"metrics-gen", "generated metrics names prefix, default to \"metrics-gen\"")
+		"metrics_gen", "generated metrics names prefix, default to \"metrics_gen\"")
 }
 
 func PreRunGenerate(cmd *cobra.Command, args []string) {

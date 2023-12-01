@@ -10,7 +10,7 @@ OUTPUT_DIR = bin
 
 ROOT_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
-all: clean build
+all: clean format build build-example
 
 build:
 	mkdir -p $(OUTPUT_DIR)
