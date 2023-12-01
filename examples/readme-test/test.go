@@ -7,7 +7,7 @@ import "time"
 // with the specified gm-interval, gm-duration and gm-runtime-metrics-interval. If gm-runtime-metricsis set to true,
 // it will also start the runtime metrics collector.
 
-// +trace:func-exec-time
+// +trace:func-exec-time name=Test
 // Above comment will generate code to measure a function execution time. It will measure the time from
 // the beginning of the function to the end of the function.
 func Test() {

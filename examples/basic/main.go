@@ -12,7 +12,7 @@ import (
 // +trace:define prom-port=9123
 
 // start
-// +trace:func-exec-time gm-cooldown-time=5ms
+// +trace:func-exec-time name=define_func1 gm-cooldown-time=5ms
 func define_func1() {
 	// this a comment
 	time.Sleep(500 * time.Millisecond)

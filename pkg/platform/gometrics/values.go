@@ -78,6 +78,16 @@ func TraceFuncTimeStmts(filename string, funcName string,
 		}
 	}
 
+	var varName string
+	if v, ok := directive.Param("name"); ok {
+		varName = v
+		if varName == funcName {
+			varName = fmt.Sprintf("fn_%s", funcName)
+		}
+	} else {
+		varName = fmt.Sprintf(`%s_%s`, filename, funcName)
+	}
+
 	identPatchTable = []*dst.Ident{}
 	g := []dst.Decl{}
 	l := []dst.Stmt{}
@@ -190,9 +200,8 @@ func TraceFuncTimeStmts(filename string, funcName string,
 										},
 										Elts: []dst.Expr{
 											&dst.BasicLit{
-												Kind: token.STRING,
-												Value: fmt.Sprintf(`"%s#%s"`,
-													filename, funcName),
+												Kind:  token.STRING,
+												Value: fmt.Sprintf(`"%s"`, varName),
 											},
 										},
 									},

@@ -171,7 +171,15 @@ func funcTraceStmtsDst(filename string, funcname string,
 	l := []dst.Stmt{}
 	pkgsPatchTable = []*dst.Ident{}
 
-	varName := fmt.Sprintf("%s_%s_%s", filename, funcname, "duration")
+	var varName string
+	if val, ok := directive.Param("name"); ok {
+		varName = val
+		if varName == funcname {
+			varName = fmt.Sprintf("fn_%s", funcname)
+		}
+	} else {
+		varName = fmt.Sprintf("%s_%s_%s", filename, funcname, "duration")
+	}
 
 	// var historgram_initialized = false
 	// var histogram_mutex sync.Mutex
