@@ -17,9 +17,10 @@ import (
 )
 
 type prometheusProvider struct {
-	inplace bool
-	suffix  string
-	dryRun  bool
+	inplace       bool
+	suffix        string
+	dryRun        bool
+	metricsPrefix string
 }
 
 const (
@@ -62,12 +63,13 @@ var (
 )
 
 func NewPrometheusProvider(inplace bool, suffix string,
-	dryRun bool,
+	dryRun bool, metricsPrefix string,
 ) platform.MetricsProvider {
 	return &prometheusProvider{
-		inplace: inplace,
-		suffix:  suffix,
-		dryRun:  dryRun,
+		inplace:       inplace,
+		suffix:        suffix,
+		dryRun:        dryRun,
+		metricsPrefix: metricsPrefix,
 	}
 }
 
@@ -97,7 +99,7 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 				}
 			} else if directive.TraceType() == parse.FuncExecTime {
 				// add function execution time metric
-				globalDecl, inFuncStmts, patchTable := funcTraceStmtsDst(filename,
+				globalDecl, inFuncStmts, patchTable := p.funcTraceStmtsDst(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
 				if err := d.SetFunctionTimeTracing(*directive, globalDecl,
 					inFuncStmts, pkgsTraceRequired, patchTable); err != nil {
@@ -164,7 +166,7 @@ func (p *prometheusProvider) dowloadNeededPackages(d *parse.CollectInfo) error {
 }
 
 // get traced function execution duration declaration and statements
-func funcTraceStmtsDst(filename string, funcname string,
+func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 	directive *parse.Directive,
 ) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt, pkgsPatchTable []*dst.Ident) {
 	g := []dst.Decl{}
@@ -179,6 +181,13 @@ func funcTraceStmtsDst(filename string, funcname string,
 		}
 	} else {
 		varName = fmt.Sprintf("%s_%s_%s", filename, funcname, "duration")
+	}
+
+	var metricsName string
+	if p.metricsPrefix != "" {
+		metricsName = fmt.Sprintf("%s_%s", p.metricsPrefix, varName)
+	} else {
+		metricsName = varName
 	}
 
 	// var historgram_initialized = false
@@ -243,14 +252,14 @@ func funcTraceStmtsDst(filename string, funcname string,
 											Key: dst.NewIdent("Name"),
 											Value: &dst.BasicLit{
 												Kind:  token.STRING,
-												Value: fmt.Sprintf("\"%s\"", varName),
+												Value: fmt.Sprintf("\"%s\"", metricsName),
 											},
 										},
 										&dst.KeyValueExpr{
 											Key: dst.NewIdent("Help"),
 											Value: &dst.BasicLit{
 												Kind:  token.STRING,
-												Value: fmt.Sprintf("\"%s\"", varName),
+												Value: fmt.Sprintf("\"%s\"", metricsName),
 											},
 										},
 									},

@@ -17,6 +17,14 @@ type MetricsProvider interface {
 	PostPatch(info *parse.CollectInfo) error
 }
 
+type MetricsProviderConfig struct {
+	MetricsPrefix string
+	Provider      string
+	DryRun        bool
+	Inplace       bool
+	Suffix        string
+}
+
 func DSTInitFunc(stmts []dst.Stmt) *dst.FuncDecl {
 	return &dst.FuncDecl{
 		Name: dst.NewIdent("init"),

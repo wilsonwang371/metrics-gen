@@ -9,16 +9,16 @@ import (
 
 	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
 	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform/gometrics"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform/prometheus"
+	"code.byted.org/bge-infra/metrics-gen/pkg/platform/common"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 var (
-	suffix   string
-	inplace  bool
-	provider string
+	suffix        string
+	inplace       bool
+	provider      string
+	metricsPrefix string // metrics names prefix, default to "metrics-gen"
 )
 
 // generateCmd represents the generate command
@@ -89,6 +89,8 @@ func init() {
 	// provider choices
 	generateCmd.Flags().StringVarP(&provider, "provider", "p", "prometheus",
 		"metrics provider to use, supports \"gometrics\" & \"prometheus\"")
+	generateCmd.Flags().StringVarP(&metricsPrefix, "metrics-prefix", "m",
+		"metrics-gen", "generated metrics names prefix, default to \"metrics-gen\"")
 }
 
 func PreRunGenerate(cmd *cobra.Command, args []string) {
@@ -115,12 +117,16 @@ func RunGenerate(cmd *cobra.Command, args []string) {
 
 	// select provider
 	var p platform.MetricsProvider
-	if provider == "prometheus" {
-		p = prometheus.NewPrometheusProvider(inplace, suffix, dryRun)
-	} else if provider == "gometrics" {
-		p = gometrics.NewGoMetricsProvider(inplace, suffix, dryRun)
-	} else {
-		log.Fatalf("unknown provider: %s", provider)
+	cfg := platform.MetricsProviderConfig{
+		Inplace:       inplace,
+		Suffix:        suffix,
+		MetricsPrefix: metricsPrefix,
+		Provider:      provider,
+		DryRun:        dryRun,
+	}
+
+	if p = common.MetricsProviderFactory(cfg); p == nil {
+		log.Fatalf("invalid provider %s", provider)
 	}
 
 	if err := p.PrePatch(info); err != nil {
