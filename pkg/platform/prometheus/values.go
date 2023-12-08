@@ -391,8 +391,15 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 	pkgsPatchTable = []*dst.Ident{}
 
 	// entry name is a combine of filename, funcname and a random number
-	entryName := fmt.Sprintf("%s_%s_%s_%s", filename, funcname, identname,
-		utils.GenerateRandNumString(8))
+	baseName := fmt.Sprintf("%s_%s_%s", filename, funcname, identname)
+	varName := fmt.Sprintf("%s_%s", baseName, utils.GenerateRandNumString(8))
+
+	var metricsName string
+	if p.metricsPrefix != "" {
+		metricsName = fmt.Sprintf("%s_%s", p.metricsPrefix, baseName)
+	} else {
+		metricsName = baseName
+	}
 
 	// var countername_initialized = false
 	// var countername_mutex sync.Mutex
@@ -407,7 +414,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 			Specs: []dst.Spec{
 				&dst.ValueSpec{
 					Names: []*dst.Ident{
-						{Name: fmt.Sprintf("%s_initialized", entryName)},
+						{Name: fmt.Sprintf("%s_initialized", varName)},
 					},
 					Type: &dst.Ident{Name: "bool"},
 					Values: []dst.Expr{
@@ -421,7 +428,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 			Specs: []dst.Spec{
 				&dst.ValueSpec{
 					Names: []*dst.Ident{
-						{Name: fmt.Sprintf("%s_mutex", entryName)},
+						{Name: fmt.Sprintf("%s_mutex", varName)},
 					},
 					Type: &dst.SelectorExpr{
 						X:   dst.NewIdent("sync"),
@@ -435,7 +442,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 			Specs: []dst.Spec{
 				&dst.ValueSpec{
 					Names: []*dst.Ident{
-						{Name: fmt.Sprintf("%s", entryName)},
+						{Name: fmt.Sprintf("%s", varName)},
 					},
 					Type: &dst.Ident{Name: "prometheus.Counter"},
 					Values: []dst.Expr{
@@ -456,14 +463,14 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 											Key: dst.NewIdent("Name"),
 											Value: &dst.BasicLit{
 												Kind:  token.STRING,
-												Value: fmt.Sprintf("\"%s\"", entryName),
+												Value: fmt.Sprintf("\"%s\"", metricsName),
 											},
 										},
 										&dst.KeyValueExpr{
 											Key: dst.NewIdent("Help"),
 											Value: &dst.BasicLit{
 												Kind:  token.STRING,
-												Value: fmt.Sprintf("\"%s\"", entryName),
+												Value: fmt.Sprintf("\"%s\"", metricsName),
 											},
 										},
 									},
@@ -519,7 +526,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 		Cond: &dst.UnaryExpr{
 			Op: token.NOT,
 			X: &dst.Ident{
-				Name: fmt.Sprintf("%s_initialized", entryName),
+				Name: fmt.Sprintf("%s_initialized", varName),
 			},
 		},
 		Body: &dst.BlockStmt{
@@ -528,7 +535,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 					X: &dst.CallExpr{
 						Fun: &dst.SelectorExpr{
 							X: dst.NewIdent(
-								fmt.Sprintf("%s_mutex", entryName),
+								fmt.Sprintf("%s_mutex", varName),
 							),
 							Sel: dst.NewIdent("Lock"),
 						},
@@ -540,7 +547,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 						X: &dst.Ident{
 							Name: fmt.Sprintf(
 								"%s_initialized",
-								entryName,
+								varName,
 							),
 						},
 					},
@@ -584,7 +591,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 												dst.NewIdent(
 													fmt.Sprintf(
 														"%s_initialized",
-														entryName,
+														varName,
 													),
 												),
 											},
@@ -605,7 +612,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 												},
 												Args: []dst.Expr{
 													dst.NewIdent(
-														entryName,
+														varName,
 													),
 												},
 											},
@@ -620,7 +627,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 					X: &dst.CallExpr{
 						Fun: &dst.SelectorExpr{
 							X: dst.NewIdent(
-								fmt.Sprintf("%s_mutex", entryName),
+								fmt.Sprintf("%s_mutex", varName),
 							),
 							Sel: dst.NewIdent("Unlock"),
 						},
@@ -632,7 +639,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 	l = append(l, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{
-				X:   dst.NewIdent(entryName),
+				X:   dst.NewIdent(varName),
 				Sel: dst.NewIdent("Inc"),
 			},
 		},
