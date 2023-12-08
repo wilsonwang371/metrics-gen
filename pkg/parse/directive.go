@@ -15,6 +15,7 @@ const (
 	Set
 	FuncExecTime
 	InnerExecTime
+	InnerCounter
 	Empty
 	GenBegine
 	GenEnd
@@ -59,6 +60,8 @@ func ParseStringDirectiveType(comment string) (TraceType, error) {
 			return FuncExecTime, nil
 		case "inner-exec-time":
 			return InnerExecTime, nil
+		case "inner-counter":
+			return InnerCounter, nil
 		case "":
 			return Empty, nil
 		case "begin-generated":

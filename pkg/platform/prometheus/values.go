@@ -126,23 +126,48 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 			} else if directive.TraceType() == parse.InnerExecTime {
 				// TODO: implement inner execution time
 				log.Warnf("inner execution time not implemented yet")
+			} else if directive.TraceType() == parse.InnerCounter {
+				// add inner counter
+				name := ""
+				if v, ok := directive.Param("name"); ok {
+					if v == "" {
+						return fmt.Errorf("name is required for inner counter")
+					}
+					name = v
+				} else {
+					return fmt.Errorf("name is required for inner counter")
+				}
+				globalDecl, inFuncStmts, patchTable, err := p.funcTraceInlineCounterStmtsDst(
+					filename, directive.Declaration().(*dst.FuncDecl).Name.Name,
+					name, directive)
+				if err != nil {
+					return err
+				}
+				// prepend an empty statement to the inFuncStmts
+				inFuncStmts = append([]dst.Stmt{&dst.EmptyStmt{}}, inFuncStmts...)
+				if err := d.SetFunctionInnerTracing(
+					*directive, globalDecl, inFuncStmts,
+					pkgsTraceInlineRequired, patchTable); err != nil {
+					return err
+				}
 			} else if directive.TraceType() == parse.GenBegine ||
 				directive.TraceType() == parse.GenEnd {
 				return fmt.Errorf("metrics code already generated")
 			} else if directive.TraceType() == parse.Set {
 				// set
 				globalDecl, inFuncStmts, patchTable,
-					err := p.funcTraceInlineStmtsDst(filename,
+					err := p.funcTraceInlineSetStmtsDst(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
 				if err != nil {
 					return err
 				}
-				if err := d.SetFunctionInnerTimeTracing(
+				// prepend an empty statement to the inFuncStmts
+				inFuncStmts = append([]dst.Stmt{&dst.EmptyStmt{}}, inFuncStmts...)
+				if err := d.SetFunctionInnerTracing(
 					*directive, globalDecl, inFuncStmts,
 					pkgsTraceInlineRequired, patchTable); err != nil {
 					return err
 				}
-
 			} else {
 				return fmt.Errorf("unknown trace type: %v", directive.TraceType())
 			}
@@ -199,7 +224,7 @@ func (p *prometheusProvider) dowloadNeededPackages(d *parse.CollectInfo) error {
 	return utils.FetchPackages(d.GoModPath(), pkgsNeedDownload)
 }
 
-func (p *prometheusProvider) funcTraceInlineStmtsDst(filename string, funcname string,
+func (p *prometheusProvider) funcTraceInlineSetStmtsDst(filename string, funcname string,
 	directive *parse.Directive) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt,
 	pkgsPatchTable []*dst.Ident, err error,
 ) {
@@ -262,7 +287,7 @@ func (p *prometheusProvider) funcTraceInlineStmtsDst(filename string, funcname s
 	// if !funcname_initialized {
 	// 	funcname_mutex.Lock()
 	// 	if !funcname_initialized {
-	// 		globalvar.Set("metrics-gen", reg)
+	// 		globalvar.Set("metrics_gen", reg)
 	// 		funcname_initialized = true
 	// 	}
 	// 	funcname_mutex.Unlock()
@@ -339,6 +364,285 @@ func (p *prometheusProvider) funcTraceInlineStmtsDst(filename string, funcname s
 		l[len(l)-1].(*dst.IfStmt).Body.List[1].(*dst.IfStmt).
 			Body.List[0].(*dst.ExprStmt).X.(*dst.CallExpr).
 			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
+	return g, l, pkgsPatchTable, nil
+}
+
+func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
+	filename string,
+	funcname string,
+	identname string,
+	directive *parse.Directive,
+) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt,
+	pkgsPatchTable []*dst.Ident, err error,
+) {
+	g := []dst.Decl{}
+	l := []dst.Stmt{}
+	pkgsPatchTable = []*dst.Ident{}
+
+	// entry name is a combine of filename, funcname and a random number
+	entryName := fmt.Sprintf("%s_%s_%s_%s", filename, funcname, identname,
+		utils.GenerateRandNumString(8))
+
+	// var countername_initialized = false
+	// var countername_mutex sync.Mutex
+	// var countername = prometheus.NewCounter(
+	// 	prometheus.CounterOpts{
+	// 		Name: "my_counter",
+	// 		Help: "This is my counter",
+	// 	})
+	g = []dst.Decl{
+		&dst.GenDecl{
+			Tok: token.VAR,
+			Specs: []dst.Spec{
+				&dst.ValueSpec{
+					Names: []*dst.Ident{
+						{Name: fmt.Sprintf("%s_initialized", entryName)},
+					},
+					Type: &dst.Ident{Name: "bool"},
+					Values: []dst.Expr{
+						&dst.Ident{Name: "false"},
+					},
+				},
+			},
+		},
+		&dst.GenDecl{
+			Tok: token.VAR,
+			Specs: []dst.Spec{
+				&dst.ValueSpec{
+					Names: []*dst.Ident{
+						{Name: fmt.Sprintf("%s_mutex", entryName)},
+					},
+					Type: &dst.SelectorExpr{
+						X:   dst.NewIdent("sync"),
+						Sel: dst.NewIdent("Mutex"),
+					},
+				},
+			},
+		},
+		&dst.GenDecl{
+			Tok: token.VAR,
+			Specs: []dst.Spec{
+				&dst.ValueSpec{
+					Names: []*dst.Ident{
+						{Name: fmt.Sprintf("%s", entryName)},
+					},
+					Type: &dst.Ident{Name: "prometheus.Counter"},
+					Values: []dst.Expr{
+						&dst.CallExpr{
+							Fun: &dst.SelectorExpr{
+								X:   dst.NewIdent("prometheus"),
+								Sel: dst.NewIdent("NewCounter"),
+							},
+							Args: []dst.Expr{
+								// construct a counter options
+								&dst.CompositeLit{
+									Type: &dst.SelectorExpr{
+										X:   dst.NewIdent("prometheus"),
+										Sel: dst.NewIdent("CounterOpts"),
+									},
+									Elts: []dst.Expr{
+										&dst.KeyValueExpr{
+											Key: dst.NewIdent("Name"),
+											Value: &dst.BasicLit{
+												Kind:  token.STRING,
+												Value: fmt.Sprintf("\"%s\"", entryName),
+											},
+										},
+										&dst.KeyValueExpr{
+											Key: dst.NewIdent("Help"),
+											Value: &dst.BasicLit{
+												Kind:  token.STRING,
+												Value: fmt.Sprintf("\"%s\"", entryName),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	// add sync
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		g[len(g)-2].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
+			Type.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+	// add prometheus.Counter
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
+			Type.(*dst.Ident),
+	)
+	// add 1st prometheus
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
+			Values[0].(*dst.CallExpr).Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+	// add 2nd prometheus
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
+			Values[0].(*dst.CallExpr).Args[0].(*dst.CompositeLit).
+			Type.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
+	// func countername_inc() {
+	// 	if !countername_initialized {
+	// 		countername_mutex.Lock()
+	// 		if !countername_initialized {
+	// 			reg, err := globalvar.Get("metrics_gen")
+	// 			if err == nil {
+	// 				countername_initialized = true
+	// 				reg.(*prometheus.Registry).MustRegister(countername)
+	// 			}
+	// 		}
+	// 		countername_mutex.Unlock()
+	// 	}
+	// 	countername.Inc()
+	// }()
+	l = append(l, &dst.IfStmt{
+		Cond: &dst.UnaryExpr{
+			Op: token.NOT,
+			X: &dst.Ident{
+				Name: fmt.Sprintf("%s_initialized", entryName),
+			},
+		},
+		Body: &dst.BlockStmt{
+			List: []dst.Stmt{
+				&dst.ExprStmt{
+					X: &dst.CallExpr{
+						Fun: &dst.SelectorExpr{
+							X: dst.NewIdent(
+								fmt.Sprintf("%s_mutex", entryName),
+							),
+							Sel: dst.NewIdent("Lock"),
+						},
+					},
+				},
+				&dst.IfStmt{
+					Cond: &dst.UnaryExpr{
+						Op: token.NOT,
+						X: &dst.Ident{
+							Name: fmt.Sprintf(
+								"%s_initialized",
+								entryName,
+							),
+						},
+					},
+					Body: &dst.BlockStmt{
+						List: []dst.Stmt{
+							&dst.AssignStmt{
+								Lhs: []dst.Expr{
+									dst.NewIdent("reg"),
+									dst.NewIdent("err"),
+								},
+								Tok: token.DEFINE,
+								Rhs: []dst.Expr{
+									&dst.CallExpr{
+										Fun: &dst.SelectorExpr{
+											X: dst.NewIdent(
+												"globalvar",
+											),
+											Sel: dst.NewIdent(
+												"Get",
+											),
+										},
+										Args: []dst.Expr{
+											&dst.BasicLit{
+												Kind:  token.STRING,
+												Value: "\"metrics_gen\"",
+											},
+										},
+									},
+								},
+							},
+							&dst.IfStmt{
+								Cond: &dst.BinaryExpr{
+									X:  dst.NewIdent("err"),
+									Op: token.EQL,
+									Y:  dst.NewIdent("nil"),
+								},
+								Body: &dst.BlockStmt{
+									List: []dst.Stmt{
+										&dst.AssignStmt{
+											Lhs: []dst.Expr{
+												dst.NewIdent(
+													fmt.Sprintf(
+														"%s_initialized",
+														entryName,
+													),
+												),
+											},
+											Tok: token.ASSIGN,
+											Rhs: []dst.Expr{
+												dst.NewIdent("true"),
+											},
+										},
+										&dst.ExprStmt{
+											X: &dst.CallExpr{
+												Fun: &dst.SelectorExpr{
+													X: dst.NewIdent(
+														"reg",
+													),
+													Sel: dst.NewIdent(
+														"(*prometheus.Registry).MustRegister",
+													),
+												},
+												Args: []dst.Expr{
+													dst.NewIdent(
+														entryName,
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				&dst.ExprStmt{
+					X: &dst.CallExpr{
+						Fun: &dst.SelectorExpr{
+							X: dst.NewIdent(
+								fmt.Sprintf("%s_mutex", entryName),
+							),
+							Sel: dst.NewIdent("Unlock"),
+						},
+					},
+				},
+			},
+		},
+	})
+	l = append(l, &dst.ExprStmt{
+		X: &dst.CallExpr{
+			Fun: &dst.SelectorExpr{
+				X:   dst.NewIdent(entryName),
+				Sel: dst.NewIdent("Inc"),
+			},
+		},
+	})
+
+	// add globalvar
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		l[len(l)-2].(*dst.IfStmt).Body.List[1].(*dst.IfStmt).
+			Body.List[0].(*dst.AssignStmt).Rhs[0].(*dst.CallExpr).
+			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+	)
+
+	// add (*prometheus.Registry).MustRegister
+	pkgsPatchTable = append(
+		pkgsPatchTable,
+		l[len(l)-2].(*dst.IfStmt).Body.List[1].(*dst.IfStmt).
+			Body.List[1].(*dst.IfStmt).Body.List[1].(*dst.ExprStmt).
+			X.(*dst.CallExpr).Fun.(*dst.SelectorExpr).X.(*dst.Ident),
 	)
 
 	return g, l, pkgsPatchTable, nil
@@ -509,14 +813,14 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
 			Values[0].(*dst.CallExpr).Args[0].(*dst.CompositeLit).
 			Elts[2].(*dst.KeyValueExpr).Value.(*dst.CallExpr).
-			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+			Fun.(*dst.SelectorExpr).Sel,
 	)
 
 	// defer func(t time.Time) {
 	// 	if !histogram_initialized {
 	// 		histogram_mutex.Lock()
 	// 		if !histogram_initialized {
-	// 			reg, err := globalvar.Get("metrics-gen")
+	// 			reg, err := globalvar.Get("metrics_gen")
 	// 			if err == nil {
 	// 				histogram_initialized = true
 	// 				reg.(*prometheus.Registry).MustRegister(histogram)
@@ -735,7 +1039,7 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 		l[len(l)-1].(*dst.DeferStmt).Call.Fun.(*dst.FuncLit).
 			Body.List[0].(*dst.IfStmt).Body.List[1].(*dst.IfStmt).
 			Body.List[1].(*dst.IfStmt).Body.List[1].(*dst.ExprStmt).X.(*dst.CallExpr).
-			Fun.(*dst.SelectorExpr).X.(*dst.Ident),
+			Fun.(*dst.SelectorExpr).Sel,
 	)
 
 	return g, l, pkgsPatchTable, nil
@@ -789,7 +1093,7 @@ func globalInitFuncDst(
 		)
 	}
 
-	// globalvar.Set("metrics-gen", reg)
+	// globalvar.Set("metrics_gen", reg)
 	stmts1 = append(stmts1, &dst.ExprStmt{
 		X: &dst.CallExpr{
 			Fun: &dst.SelectorExpr{

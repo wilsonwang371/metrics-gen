@@ -22,6 +22,15 @@ make build
 
 ## Usage
 
+### Metrics Types
+
+1. `define`: Define the metrics provider and its parameters.
+2. `set`: Use specified metrics provider to initialize metrics.
+3. `func-exec-time`: Measure the execution time of a function.
+4. `inner-exec-time`: Measure the execution time of a code block.
+5. `inner-counter`: Count the number of times a line of code is executed.
+
+
 ### 1. Add directive comments to your source code
 
 `metrics-gen` uses directive comments to determine where to inject code into your source files. These comments are of the form `//+trace:...`. For example:

@@ -370,8 +370,8 @@ out:
 	return fmt.Errorf("declaration not found")
 }
 
-// SetFunctionInnerTimeTracing sets the function inner time tracing
-func (t *CollectInfo) SetFunctionInnerTimeTracing(d Directive,
+// SetFunctionInnerTracing sets the function inner tracing
+func (t *CollectInfo) SetFunctionInnerTracing(d Directive,
 	globalDecl []dst.Decl,
 	inFuncStmts []dst.Stmt,
 	pkgsIn map[string]*PackageInfo,

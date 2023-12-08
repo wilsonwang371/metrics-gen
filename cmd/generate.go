@@ -18,7 +18,7 @@ var (
 	suffix        string
 	inplace       bool
 	provider      string
-	metricsPrefix string // metrics names prefix, default to "metrics-gen"
+	metricsPrefix string // metrics names prefix, default to "metrics_gen"
 )
 
 // generateCmd represents the generate command

@@ -532,10 +532,9 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 				if _, ok := directive.Param("gm-cooldown-time"); ok {
 					return fmt.Errorf("gm-cooldown-time is not supported for inner-exec-time")
 				}
-
 				g, l, patchTable := TraceFuncTimeStmts(filename,
 					directive.Declaration().(*dst.FuncDecl).Name.Name, directive)
-				if err := d.SetFunctionInnerTimeTracing(*directive, g, l, pkgsRequired,
+				if err := d.SetFunctionInnerTracing(*directive, g, l, pkgsRequired,
 					patchTable); err != nil {
 					return err
 				}
@@ -544,6 +543,8 @@ func PatchProject(d *parse.CollectInfo, _ bool) error {
 				return fmt.Errorf("metrics code already generated")
 			} else if directive.TraceType() == parse.Set {
 				return fmt.Errorf("set is not supported")
+			} else if directive.TraceType() == parse.InnerCounter {
+				return fmt.Errorf("inner-counter is not supported")
 			}
 		}
 	}

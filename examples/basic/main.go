@@ -16,6 +16,7 @@ import (
 func define_func1() {
 	// this a comment
 	time.Sleep(500 * time.Millisecond)
+	// +trace:inner-counter name=main_func_counter2
 	return
 }
 
@@ -37,6 +38,8 @@ func main() {
 	time.Sleep(10 * time.Second)
 	// send signal SIGUSR1 to self process trace
 	pid := os.Getpid()
+
+	// +trace:inner-counter name=main_func_counter
 	selfProcess, _ := os.FindProcess(pid)
 	selfProcess.Signal(syscall.SIGUSR1)
 	time.Sleep(5 * time.Second)
