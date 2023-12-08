@@ -54,9 +54,18 @@ var (
 		// "promauto":   {"promauto", "github.com/prometheus/client_golang/prometheus/promauto"},
 	}
 
-	pkgsTraceInlineRequired = map[string]*parse.PackageInfo{
+	pkgsTraceInlineSetRequired = map[string]*parse.PackageInfo{
 		"sync":      {Name: "sync", Path: "sync"},
 		"globalvar": {Name: "globalvar", Path: "github.com/wilsonwang371/globalvar/pkg"},
+	}
+
+	pkgsTraceInlineCounterRequired = map[string]*parse.PackageInfo{
+		"sync":      {Name: "sync", Path: "sync"},
+		"globalvar": {Name: "globalvar", Path: "github.com/wilsonwang371/globalvar/pkg"},
+		"prometheus": {
+			Name: "prometheus",
+			Path: "github.com/prometheus/client_golang/prometheus",
+		},
 	}
 
 	pkgsNeedDownload = []string{
@@ -147,7 +156,7 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 				inFuncStmts = append([]dst.Stmt{&dst.EmptyStmt{}}, inFuncStmts...)
 				if err := d.SetFunctionInnerTracing(
 					*directive, globalDecl, inFuncStmts,
-					pkgsTraceInlineRequired, patchTable); err != nil {
+					pkgsTraceInlineCounterRequired, patchTable); err != nil {
 					return err
 				}
 			} else if directive.TraceType() == parse.GenBegine ||
@@ -165,7 +174,7 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 				inFuncStmts = append([]dst.Stmt{&dst.EmptyStmt{}}, inFuncStmts...)
 				if err := d.SetFunctionInnerTracing(
 					*directive, globalDecl, inFuncStmts,
-					pkgsTraceInlineRequired, patchTable); err != nil {
+					pkgsTraceInlineSetRequired, patchTable); err != nil {
 					return err
 				}
 			} else {
