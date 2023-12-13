@@ -124,7 +124,7 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 						return fmt.Errorf("func declaration is nil")
 					}
 					globalDecl, inFuncStmts, patchTable, _ := p.funcTraceStmtsDst(filename,
-						f.Name.Name, directive)
+						f.Name.Name, "", directive)
 					if err := d.SetFunctionTimeTracing(*directive, globalDecl,
 						inFuncStmts, pkgsTraceRequired, patchTable); err != nil {
 						return err
@@ -133,8 +133,29 @@ func (p *prometheusProvider) Patch(d *parse.CollectInfo) error {
 					return fmt.Errorf("not a func declaration")
 				}
 			} else if directive.TraceType() == parse.InnerExecTime {
-				// TODO: implement inner execution time
-				log.Warnf("inner execution time not implemented yet")
+				// add inner execution time metric
+				name := ""
+				if v, ok := directive.Param("name"); ok {
+					if v == "" {
+						return fmt.Errorf("name is required for inner time tracing")
+					}
+					name = v
+				} else {
+					return fmt.Errorf("name is required for inner time tracing")
+				}
+				globalDecl, inFuncStmts, patchTable, err := p.funcTraceStmtsDst(
+					filename, directive.Declaration().(*dst.FuncDecl).Name.Name,
+					name, directive)
+				if err != nil {
+					return err
+				}
+				// prepend an empty statement to the inFuncStmts
+				inFuncStmts = append([]dst.Stmt{&dst.EmptyStmt{}}, inFuncStmts...)
+				if err := d.SetFunctionInnerTracing(
+					*directive, globalDecl, inFuncStmts,
+					pkgsTraceInlineCounterRequired, patchTable); err != nil {
+					return err
+				}
 			} else if directive.TraceType() == parse.InnerCounter {
 				// add inner counter
 				name := ""
@@ -666,7 +687,7 @@ func (p *prometheusProvider) funcTraceInlineCounterStmtsDst(
 
 // get traced function execution duration declaration and statements
 func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
-	directive *parse.Directive,
+	identname string, directive *parse.Directive,
 ) (globalDecl []dst.Decl, inFuncStmts []dst.Stmt, pkgsPatchTable []*dst.Ident,
 	err error,
 ) {
@@ -681,7 +702,7 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 			varName = fmt.Sprintf("fn_%s", funcname)
 		}
 	} else {
-		varName = fmt.Sprintf("%s_%s_%s", filename, funcname, "duration")
+		varName = fmt.Sprintf("%s_%s_%s_%s", filename, funcname, identname, "duration")
 	}
 
 	var metricsName string
@@ -691,13 +712,13 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 		metricsName = varName
 	}
 
-	// var historgram_initialized = false
-	// var histogram_mutex sync.Mutex
-	// var histogram = prometheus.NewHistogram(
-	// 	prometheus.HistogramOpts{
-	// 		Name: "my_histogram",
-	// 		Help: "This is my histogram",
-	//		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 24),
+	// var summary_initialized = false
+	// var summary_mutex sync.Mutex
+	// var summary = prometheus.NewSummary(
+	// 	prometheus.SummaryOpts{
+	// 		Name: "my_summary",
+	// 		Help: "This is my summary",
+	//		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
 	// 	})
 	g = []dst.Decl{
 		&dst.GenDecl{
@@ -735,19 +756,19 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 					Names: []*dst.Ident{
 						{Name: fmt.Sprintf("%s", varName)},
 					},
-					Type: &dst.Ident{Name: "prometheus.Histogram"},
+					Type: &dst.Ident{Name: "prometheus.Summary"},
 					Values: []dst.Expr{
 						&dst.CallExpr{
 							Fun: &dst.SelectorExpr{
 								X:   dst.NewIdent("prometheus"),
-								Sel: dst.NewIdent("NewHistogram"),
+								Sel: dst.NewIdent("NewSummary"),
 							},
 							Args: []dst.Expr{
-								// construct a histogram options
+								// construct a summary options
 								&dst.CompositeLit{
 									Type: &dst.SelectorExpr{
 										X:   dst.NewIdent("prometheus"),
-										Sel: dst.NewIdent("HistogramOpts"),
+										Sel: dst.NewIdent("SummaryOpts"),
 									},
 									Elts: []dst.Expr{
 										&dst.KeyValueExpr{
@@ -765,26 +786,42 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 											},
 										},
 										&dst.KeyValueExpr{
-											Key: dst.NewIdent("Buckets"),
-											Value: &dst.CallExpr{
-												Fun: &dst.SelectorExpr{
-													X: dst.NewIdent("prometheus"),
-													Sel: dst.NewIdent(
-														"ExponentialBuckets",
-													),
+											Key: dst.NewIdent("Objectives"),
+											Value: &dst.CompositeLit{
+												Type: &dst.MapType{
+													Key:   dst.NewIdent("float64"),
+													Value: dst.NewIdent("float64"),
 												},
-												Args: []dst.Expr{
-													&dst.BasicLit{
-														Kind:  token.FLOAT,
-														Value: "0.0005",
+												Elts: []dst.Expr{
+													&dst.KeyValueExpr{
+														Key: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.5",
+														},
+														Value: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.05",
+														},
 													},
-													&dst.BasicLit{
-														Kind:  token.INT,
-														Value: "2",
+													&dst.KeyValueExpr{
+														Key: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.9",
+														},
+														Value: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.01",
+														},
 													},
-													&dst.BasicLit{
-														Kind:  token.INT,
-														Value: "24",
+													&dst.KeyValueExpr{
+														Key: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.99",
+														},
+														Value: &dst.BasicLit{
+															Kind:  token.FLOAT,
+															Value: "0.001",
+														},
 													},
 												},
 											},
@@ -804,7 +841,7 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 		g[len(g)-2].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
 			Type.(*dst.SelectorExpr).X.(*dst.Ident),
 	)
-	// add prometheus.Histogram
+	// add prometheus.Summary
 	pkgsPatchTable = append(
 		pkgsPatchTable,
 		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
@@ -823,29 +860,21 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 			Values[0].(*dst.CallExpr).Args[0].(*dst.CompositeLit).
 			Type.(*dst.SelectorExpr).X.(*dst.Ident),
 	)
-	// add 3rd prometheus
-	pkgsPatchTable = append(
-		pkgsPatchTable,
-		g[len(g)-1].(*dst.GenDecl).Specs[0].(*dst.ValueSpec).
-			Values[0].(*dst.CallExpr).Args[0].(*dst.CompositeLit).
-			Elts[2].(*dst.KeyValueExpr).Value.(*dst.CallExpr).
-			Fun.(*dst.SelectorExpr).Sel,
-	)
 
 	// defer func(t time.Time) {
-	// 	if !histogram_initialized {
-	// 		histogram_mutex.Lock()
-	// 		if !histogram_initialized {
+	// 	if !summary_initialized {
+	// 		summary_mutex.Lock()
+	// 		if !summary_initialized {
 	// 			reg, err := globalvar.Get("metrics_gen")
 	// 			if err == nil {
-	// 				histogram_initialized = true
-	// 				reg.(*prometheus.Registry).MustRegister(histogram)
+	// 				summary_initialized = true
+	// 				reg.(*prometheus.Registry).MustRegister(summary)
 	// 			}
 	// 		}
-	// 		histogram_mutex.Unlock()
+	// 		summary_mutex.Unlock()
 	// 	}
 	// 	d := time.Since(t)
-	// 	histogram.Observe(d.Milliseconds())
+	// 	summary.Observe(d.Milliseconds())
 	// }(time.Now())
 	l = append(l, &dst.DeferStmt{
 		Call: &dst.CallExpr{

@@ -653,6 +653,7 @@ func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) 
 				return nil, err
 			}
 		}
+
 		// check declaration internal code and find out the directives
 		if funcDecl, ok := decl.(*dst.FuncDecl); ok {
 			for _, stmt := range funcDecl.Body.List {

@@ -34,7 +34,12 @@ func main() {
 	wg.Wait()
 	log.Infof("main func done")
 
-	// +trace:inner-exec-time
+	func() {
+		// +trace:inner-exec-time name=inner_func_exec_time
+		time.Sleep(1 * time.Second)
+	}()
+
+	// +trace:inner-exec-time name=main_func_exec_time
 	time.Sleep(10 * time.Second)
 	// send signal SIGUSR1 to self process trace
 	pid := os.Getpid()
