@@ -702,7 +702,11 @@ func (p *prometheusProvider) funcTraceStmtsDst(filename string, funcname string,
 			varName = fmt.Sprintf("fn_%s", funcname)
 		}
 	} else {
-		varName = fmt.Sprintf("%s_%s_%s_%s", filename, funcname, identname, "duration")
+		if identname == "" {
+			varName = fmt.Sprintf("%s_%s_%s", filename, funcname, "duration")
+		} else {
+			varName = fmt.Sprintf("%s_%s_%s_%s", filename, funcname, identname, "duration")
+		}
 	}
 
 	var metricsName string
