@@ -1,8 +1,8 @@
 package platform
 
 import (
-	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
 	"github.com/dave/dst"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/parse"
 )
 
 // define common interface for metrics providers

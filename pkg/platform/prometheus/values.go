@@ -9,11 +9,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
-	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
 	"github.com/dave/dst/decorator"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/parse"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/utils"
 )
 
 type prometheusProvider struct {

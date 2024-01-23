@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"regexp"
 
-	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform/common"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/parse"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform/common"
 )
 
 var (

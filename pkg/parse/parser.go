@@ -13,7 +13,7 @@ import (
 	"github.com/dave/dst/decorator"
 	log "github.com/sirupsen/logrus"
 
-	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/utils"
 
 	"github.com/google/uuid"
 )

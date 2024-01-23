@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"code.byted.org/bge-infra/metrics-gen/pkg/utils"
 	"github.com/dave/dst"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/utils"
 )
 
 type TraceType int

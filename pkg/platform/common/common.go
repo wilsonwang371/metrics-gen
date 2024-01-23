@@ -1,9 +1,9 @@
 package common
 
 import (
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform/gometrics"
-	"code.byted.org/bge-infra/metrics-gen/pkg/platform/prometheus"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform/gometrics"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/platform/prometheus"
 )
 
 func MetricsProviderFactory(

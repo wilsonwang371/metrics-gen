@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/exec"
 
-	"code.byted.org/bge-infra/metrics-gen/pkg/parse"
 	"github.com/spf13/cobra"
+	"github.com/wilsonwang371/metrics-gen/metrics-gen/pkg/parse"
 
 	log "github.com/sirupsen/logrus"
 )

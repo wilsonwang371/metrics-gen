@@ -1,4 +1,4 @@
-module code.byted.org/bge-infra/metrics-gen
+module github.com/wilsonwang371/metrics-gen/metrics-gen
 
 go 1.20
 

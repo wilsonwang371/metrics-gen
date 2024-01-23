@@ -11,7 +11,7 @@
 ## Installation
 
 ```bash
-go get code.byted.org/bge-infra/metrics-gen
+go get github.com/wilsonwang371/metrics-gen/metrics-gen
 ```
 
 ## Compile
