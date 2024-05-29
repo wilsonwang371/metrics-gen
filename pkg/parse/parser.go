@@ -95,6 +95,11 @@ func (t *CollectInfo) AddTraceDir(dir string, recursive bool,
 				// add go files to list
 				files = append(files, path)
 			} else if filepath.Ext(path) == ".mod" {
+				// make sure it is go.mod file
+				name := filepath.Base(path)
+				if name != "go.mod" {
+					return nil
+				}
 				// save go.mod location
 				if t.goModPath != "" {
 					return fmt.Errorf("multiple go.mod files")
@@ -656,6 +661,9 @@ func (t *CollectInfo) readFileDirectives(filename string) ([]*Directive, error) 
 
 		// check declaration internal code and find out the directives
 		if funcDecl, ok := decl.(*dst.FuncDecl); ok {
+			if funcDecl.Body == nil {
+				continue
+			}
 			for _, stmt := range funcDecl.Body.List {
 				for _, decor := range stmt.Decorations().Start.All() {
 					if traceType, err := ParseStringDirectiveType(decor); err == nil {
